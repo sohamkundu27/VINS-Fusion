@@ -127,7 +127,7 @@ main( int argc, char** argv )
             std::cout << "# INFO: Camera model: Scaramuzza-Omnidirect" << std::endl;
             break;
     }
-
+    //use boost to find all images in the input directory
     // look for images in input directory
     std::vector< std::string > imageFilenames;
     boost::filesystem::directory_iterator itr;
