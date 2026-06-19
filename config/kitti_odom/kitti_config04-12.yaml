@@ -37,20 +37,20 @@ body_T_cam1: !!opencv-matrix
           0, 0, 0, 1]
 
 #Multiple thread support
-multiple_thread: 1      # was 0 — run frontend+backend in parallel
+multiple_thread: 0      # must be 0 for offline: async backend causes frame flooding divergence
 
 #feature traker paprameters
-max_cnt: 500            # was 200 — more features = more constraints for optimizer
-min_dist: 20            # was 30 — allow denser feature grid with higher max_cnt
+max_cnt: 400            # was 200 — more features = more constraints for optimizer
+min_dist: 25            # was 30 — slightly denser to accommodate higher max_cnt
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image
 F_threshold: 1.0        # ransac threshold (pixel)
 show_track: 1           # publish tracking image as topic
 flow_back: 1            # perform forward and backward optical flow to improve feature tracking accuracy
 
 #optimization parameters
-max_solver_time: 0.04  # was 0.08 — tighter per-iteration cap; threads overlap so total budget is higher
-max_num_iterations: 20  # was 10 — allow fuller convergence per keyframe
-keyframe_parallax: 20   # was 15 — fewer keyframes keeps backend leaner on long sequences
+max_solver_time: 0.5   # was 0.08 — offline: not real-time, give Ceres full convergence budget
+max_num_iterations: 20  # was 10 — more iterations per keyframe
+keyframe_parallax: 15   # keep original — higher value caused missed keyframes on long seqs
 
 #imu parameters       The more accurate parameters you provide, the better performance
 acc_n: 0.1          # accelerometer measurement noise standard deviation. #0.2   0.04
