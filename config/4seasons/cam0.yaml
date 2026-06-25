@@ -1,0 +1,17 @@
+%YAML:1.0
+---
+# 4Seasons cam0 (left), distorted fisheye — Kannala-Brandt equidistant model.
+# Values taken verbatim from calibration/camchain.yaml (cam0).
+model_type: KANNALA_BRANDT
+camera_name: cam0
+image_width: 800
+image_height: 400
+projection_parameters:
+   k2: -0.03559759964255725
+   k3: -0.005093721310999416
+   k4: 0.019716282737702494
+   k5: -0.01583280039499382
+   mu: 527.9990706330082
+   mv: 527.963495807245
+   u0: 399.18451401412665
+   v0: 172.8193108347693
