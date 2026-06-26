@@ -162,7 +162,7 @@ evaluate("01",
     vio_path   = f"{BASE}/output/vio_01.txt",
     gt_path    = f"{BASE}/dataset/poses/01.txt",
     times_path = f"{BASE}/dataset/sequences/01/times.txt")
-
+#05
 evaluate("05",
     vio_path   = f"{BASE}/output/vio_05.txt",
     gt_path    = f"{BASE}/dataset/poses/05.txt",
