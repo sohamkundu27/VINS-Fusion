@@ -11,5 +11,7 @@
   "mean_features_per_frame": 120.65576748410535,
   "mean_depth_per_frame": 30.095876030224655,
   "mean_gt_speed": 21.495320191067204,
-  "last_frame_has_zero_tracks": true
+  "last_frame_has_zero_tracks": true,
+  "mean_velocity_error_rmse": 6.508779510811098,
+  "pred_velocity_source": "finite-diff on vio.txt (no-IMU run: csv velocity all-zero)"
 }

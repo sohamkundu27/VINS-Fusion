@@ -65,8 +65,25 @@ valid depth**.
 | `feature_pixels_t1` | (N,2) f32 | (u,v) at *t+1* (KLT, forward-backward checked) |
 | `depths`            | (N,) f32  | metric depth at *t* (SGBM, 0–80 m) |
 | `gt_velocity_cam`   | (3,) f32  | GT velocity in **camera frame** `R_tᵀ·v_world` |
+| `pred_velocity_cam` | (3,) f32  | VINS-Fusion predicted velocity in camera frame (finite-diff on `vio.txt`) |
+| `velocity_error`    | (3,) f32  | `pred − gt` (camera frame) |
+| `velocity_error_magnitude` | () f32 | `‖pred − gt‖` |
 | `timestamp`         | f64       | seconds |
 | `frame_idx`         | int       | frame index |
+
+VINS predicted velocity uses finite differences on the estimated trajectory (`vio.txt`)
+projected into the camera frame; the stereo-only/no-IMU runs leave `vio.csv` `vx,vy,vz` at zero,
+so they are not used. Velocity in the body frame is alignment-invariant, so GT and prediction are
+directly comparable without trajectory alignment:
+
+| Seq | GT mean speed | PRED mean speed | Vel error RMSE |
+|-----|--------------:|----------------:|---------------:|
+| 00  | 7.91 m/s | 7.89 m/s | 0.28 m/s |
+| 01  | 21.51 m/s | 21.45 m/s | 6.51 m/s |
+| 05  | 7.67 m/s | 7.75 m/s | 0.19 m/s |
+
+Mean speeds match GT to within 0.1 m/s; seq 01's high RMSE is the fast highway run (sparse features,
+per-frame scale jitter) — the same sequence that needed the `max_solver_time` fix.
 
 **4Seasons** — CSV/TXT per recording ([`4seasons/features/`](4seasons/features/); repo holds 500-row
 samples):
