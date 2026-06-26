@@ -1,0 +1,15 @@
+{
+  "sequence": "00",
+  "num_frames": 4541,
+  "fx": 718.856,
+  "fy": 718.856,
+  "cx": 607.193,
+  "cy": 185.216,
+  "baseline": 0.537165,
+  "image_width": 1241,
+  "image_height": 376,
+  "mean_features_per_frame": 308.97577626073553,
+  "mean_depth_per_frame": 25.178739906013654,
+  "mean_gt_speed": 7.912403690686748,
+  "last_frame_has_zero_tracks": true
+}

@@ -14,3 +14,13 @@ result_gps.txt
 2*.txt
 camera_camera_calib.yaml
 camera_chessboard_data.dat
+
+# --- session additions: datasets, extraction artifacts, build outputs ---
+*.zip
+datasets/
+__pycache__/
+*.pyc
+*.bag
+build/
+devel/
+.catkin_workspace
