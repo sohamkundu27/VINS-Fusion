@@ -4,7 +4,7 @@ Augment the KITTI extracted dataset with VINS-Fusion *predicted* velocity.
 
 For each sequence (00, 01, 05):
   - load ~/datasets/kitti/output/vio_XX.txt  (KITTI 3x4, one pose/frame, 1:1 with images)
-  - predicted velocity (camera frame) via finite differences on the estimate:
+  predicted velocity (camera frame) via finite differences on the estimate:
         v_world_pred = (pos_est[t+1] - pos_est[t]) / dt
         v_cam_pred   = R_est[t].T @ v_world_pred
     (vio.csv has vx,vy,vz columns but they are all-zero for these stereo-only/no-IMU
