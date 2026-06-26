@@ -35,35 +35,40 @@ def render(seq, every, ext):
     outdir = os.path.join(OUTROOT, f"seq_{seq}")
     vizdir = os.path.join(outdir, "viz_full")
     os.makedirs(vizdir, exist_ok=True)
-    npzs = sorted(glob.glob(os.path.join(outdir, "frame_*.npz")))
+    npzs = sorted(glob.glob(os.path.join(outdir, "frame_*.npz")))  # one .npz per frame
     n = 0
     for t, npz in enumerate(npzs):
-        if t % every != 0:
+        if t % every != 0:                      # --every lets you subsample (1 = all frames)
             continue
-        d = np.load(npz)
+        d = np.load(npz)                         # load this frame's extracted arrays
+        # read the left image in COLOR so the overlays show up in colour
         img = cv2.imread(os.path.join(KITTI, "sequences", seq, "image_0", f"{t:06d}.png"))
         if img is None:
             continue
         pt, pt1, dep = d["feature_pixels_t"], d["feature_pixels_t1"], d["depths"]
+        # --- draw each tracked feature: dot at t, arrow to t+1, depth label ---
         for (x, y), (x1, y1), dd in zip(pt, pt1, dep):
             p0 = (int(round(x)), int(round(y)))
-            cv2.circle(img, p0, 2, BLUE, -1)
-            if not (x1 == 0 and y1 == 0):
+            cv2.circle(img, p0, 2, BLUE, -1)                       # feature location at t
+            if not (x1 == 0 and y1 == 0):                          # skip last-frame zero tracks
                 cv2.arrowedLine(img, p0, (int(round(x1)), int(round(y1))), GREEN, 1, tipLength=0.3)
             cv2.putText(img, f"{dd:.0f}", (p0[0] + 3, p0[1] - 3), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.3, YELLOW, 1, cv2.LINE_AA)
+                        0.3, YELLOW, 1, cv2.LINE_AA)                # depth in metres
+        # --- 3-line velocity readout (GT / PRED / Error) ---
         g, p = d["gt_velocity_cam"], d["pred_velocity_cam"]
         err = d["velocity_error"]; em = float(d["velocity_error_magnitude"])
         lines = [
             (f"GT   vel: [{g[0]:6.2f},{g[1]:6.2f},{g[2]:6.2f}] m/s |v|={np.linalg.norm(g):.2f}", GREEN),
             (f"PRED vel: [{p[0]:6.2f},{p[1]:6.2f},{p[2]:6.2f}] m/s |v|={np.linalg.norm(p):.2f}", YELLOW),
             (f"Error:    [{err[0]:6.2f},{err[1]:6.2f},{err[2]:6.2f}] m/s |err|={em:.2f}",
-             RED if em > 0.5 else WHITE),
+             RED if em > 0.5 else WHITE),       # error turns red when |err| > 0.5 m/s
         ]
         for i, (txt, col) in enumerate(lines):
-            y0 = 16 + i * 18
+            y0 = 16 + i * 18                     # stack the three lines vertically
+            # draw black outline first, then coloured text on top, for readability
             cv2.putText(img, txt, (8, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.putText(img, txt, (8, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1, cv2.LINE_AA)
+        # write compact JPEG (default) or lossless PNG depending on --ext
         out = os.path.join(vizdir, f"frame_{t:06d}.{ext}")
         if ext == "jpg":
             cv2.imwrite(out, img, [cv2.IMWRITE_JPEG_QUALITY, 80])

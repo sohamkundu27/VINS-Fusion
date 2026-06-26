@@ -60,17 +60,24 @@ def csv_velocity_usable(seq):
 
 
 def predicted_velocities(seq):
-    """v_cam_pred[t] for all frames (last frame zeros)."""
-    R, P = load_vio_txt(os.path.join(VIODIR, f"vio_{seq}.txt"))
-    times = load_times(seq)
+    """VINS predicted velocity in the camera frame for every frame.
+
+    Mirrors the GT velocity computation but on the ESTIMATED trajectory (vio.txt):
+      v_world = (pos_est[t+1] - pos_est[t]) / dt    (finite difference)
+      v_cam   = R_est[t].T @ v_world                (rotate world -> camera frame)
+    Because each velocity is projected into its own camera frame, GT and prediction
+    are directly comparable without any trajectory alignment. Last frame -> zeros.
+    """
+    R, P = load_vio_txt(os.path.join(VIODIR, f"vio_{seq}.txt"))  # R_est[t], pos_est[t]
+    times = load_times(seq)                                       # capture times (s)
     nf = len(P)
-    vcam = np.zeros((nf, 3), np.float32)
+    vcam = np.zeros((nf, 3), np.float32)                          # default 0 (covers last frame)
     for t in range(nf - 1):
         dt = times[t + 1] - times[t]
-        if dt <= 0:
+        if dt <= 0:                                              # guard against bad timestamps
             continue
-        v_world = (P[t + 1] - P[t]) / dt
-        vcam[t] = (R[t].T @ v_world).astype(np.float32)
+        v_world = (P[t + 1] - P[t]) / dt                         # world-frame velocity
+        vcam[t] = (R[t].T @ v_world).astype(np.float32)          # -> camera/body frame
     return vcam
 
 

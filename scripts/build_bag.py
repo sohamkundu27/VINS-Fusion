@@ -42,19 +42,22 @@ def main():
     print("cam0 dir: %s" % cam0)
     print("cam1 dir: %s" % cam1)
 
-    # image timestamp(ns) -> filename, keyed off cam0; require matching cam1 file
+    # 4Seasons names every image file by its capture timestamp in nanoseconds.
+    # Index cam0 and cam1 frames by that timestamp string so we can pair them.
     c0 = {}
     for p in glob.glob(os.path.join(cam0, "*.png")):
-        ts = os.path.splitext(os.path.basename(p))[0]
+        ts = os.path.splitext(os.path.basename(p))[0]   # "<timestamp_ns>.png" -> "<timestamp_ns>"
         c0[ts] = p
     c1 = {}
     for p in glob.glob(os.path.join(cam1, "*.png")):
         ts = os.path.splitext(os.path.basename(p))[0]
         c1[ts] = p
+    # keep only timestamps present in BOTH cameras (a complete stereo pair), time-ordered
     common = sorted(set(c0.keys()) & set(c1.keys()), key=lambda s: int(s))
     print("cam0=%d cam1=%d common stereo pairs=%d" % (len(c0), len(c1), len(common)))
 
-    # IMU rows: timestamp_ns gx gy gz ax ay az
+    # Parse imu.txt — one sample per line: "timestamp_ns gx gy gz ax ay az"
+    # (gyro rad/s, accel m/s^2). Stored as tuples for the merge step.
     imu_rows = []
     with open(imu_txt) as f:
         for line in f:
@@ -64,54 +67,58 @@ def main():
             v = line.split()
             imu_rows.append((int(v[0]), float(v[1]), float(v[2]), float(v[3]),
                              float(v[4]), float(v[5]), float(v[6])))
-    imu_rows.sort(key=lambda r: r[0])
+    imu_rows.sort(key=lambda r: r[0])                   # ensure monotonic timestamps
     print("imu samples=%d" % len(imu_rows))
 
-    # Build a single merged, time-ordered event list
+    # Merge images + IMU into ONE list sorted by timestamp, so the bag reproduces
+    # the real sensor stream order VINS expects (IMU interleaved between frames).
     events = []
     for ts in common:
-        events.append((int(ts), "img", ts))
+        events.append((int(ts), "img", ts))            # tag each event with its kind
     for r in imu_rows:
         events.append((r[0], "imu", r))
-    events.sort(key=lambda e: e[0])
+    events.sort(key=lambda e: e[0])                     # global chronological order
 
-    bridge = CvBridge()
+    bridge = CvBridge()                                 # converts cv2 images -> ROS Image msgs
     bag = rosbag.Bag(out_bag, "w")
     n_img = n_imu = 0
     try:
         for ev_ts, kind, payload in events:
-            t = stamp_from_ns(ev_ts)
+            t = stamp_from_ns(ev_ts)                    # ROS Time for this event
             if kind == "imu":
+                # --- build a sensor_msgs/Imu message ---
                 _, gx, gy, gz, ax, ay, az = payload
                 m = Imu()
                 m.header.stamp = t
                 m.header.frame_id = "imu0"
-                m.angular_velocity.x = gx
+                m.angular_velocity.x = gx               # gyro (rad/s)
                 m.angular_velocity.y = gy
                 m.angular_velocity.z = gz
-                m.linear_acceleration.x = ax
+                m.linear_acceleration.x = ax            # accel (m/s^2)
                 m.linear_acceleration.y = ay
                 m.linear_acceleration.z = az
-                m.orientation_covariance[0] = -1  # orientation not provided
+                m.orientation_covariance[0] = -1        # signal "no orientation provided"
                 bag.write("/imu0", m, t)
                 n_imu += 1
             else:
+                # --- build the two sensor_msgs/Image messages for a stereo pair ---
                 ts = payload
-                im0 = cv2.imread(c0[ts], cv2.IMREAD_GRAYSCALE)
-                im1 = cv2.imread(c1[ts], cv2.IMREAD_GRAYSCALE)
+                im0 = cv2.imread(c0[ts], cv2.IMREAD_GRAYSCALE)   # left  (mono8)
+                im1 = cv2.imread(c1[ts], cv2.IMREAD_GRAYSCALE)   # right (mono8)
                 if im0 is None or im1 is None:
                     continue
                 msg0 = bridge.cv2_to_imgmsg(im0, encoding="mono8")
                 msg0.header.stamp = t; msg0.header.frame_id = "cam0"
                 msg1 = bridge.cv2_to_imgmsg(im1, encoding="mono8")
                 msg1.header.stamp = t; msg1.header.frame_id = "cam1"
+                # both images share the SAME stamp so VINS treats them as one stereo frame
                 bag.write("/cam0/image_raw", msg0, t)
                 bag.write("/cam1/image_raw", msg1, t)
                 n_img += 1
                 if n_img % 1000 == 0:
                     print("  ... %d stereo pairs written" % n_img)
     finally:
-        bag.close()
+        bag.close()                                     # always flush/close the bag
     print("DONE bag=%s  stereo_pairs=%d  imu=%d" % (out_bag, n_img, n_imu))
 
 if __name__ == "__main__":
