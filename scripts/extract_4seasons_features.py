@@ -112,25 +112,32 @@ def process(seqroot, gnss_path, label, outdir):
         Rt = cv2.imread(right[name], cv2.IMREAD_GRAYSCALE)
         if Lt is None or Lt1 is None or Rt is None:
             continue
+        # detect up to 500 Shi-Tomasi corners in the left image at time t
         pts = cv2.goodFeaturesToTrack(Lt, MAX_CORNERS, QUALITY, MIN_DIST)
         if pts is None:
             continue
         pts = pts.reshape(-1, 2).astype(np.float32)
 
-        # temporal flow left[t] -> left[t+1] with forward-backward check
-        nxt, st, _ = cv2.calcOpticalFlowPyrLK(Lt, Lt1, pts, None, **LK)
-        back, st2, _ = cv2.calcOpticalFlowPyrLK(Lt1, Lt, nxt, None, **LK)
-        fb = np.linalg.norm(pts - back, axis=1)
-        ok_t = (st.ravel() == 1) & (st2.ravel() == 1) & (fb < FB_THRESH)
+        # --- TEMPORAL track: left[t] -> left[t+1], with forward-backward check ---
+        nxt, st, _ = cv2.calcOpticalFlowPyrLK(Lt, Lt1, pts, None, **LK)    # forward  t -> t+1
+        back, st2, _ = cv2.calcOpticalFlowPyrLK(Lt1, Lt, nxt, None, **LK)  # backward t+1 -> t
+        fb = np.linalg.norm(pts - back, axis=1)                           # round-trip error (px)
+        ok_t = (st.ravel() == 1) & (st2.ravel() == 1) & (fb < FB_THRESH)  # consistent tracks only
 
-        # stereo flow left[t] -> right[t] for disparity/depth
+        # --- STEREO match: left[t] -> right[t] gives horizontal disparity ---
+        # On rectified images the same 3D point lies on the SAME image row in both
+        # cameras, so a valid match has near-zero vertical offset (dv) and the
+        # horizontal offset (disp = u_left - u_right) is the disparity.
         rpt, sr, _ = cv2.calcOpticalFlowPyrLK(Lt, Rt, pts, None, **LK)
-        disp = pts[:, 0] - rpt[:, 0]
-        dv = np.abs(pts[:, 1] - rpt[:, 1])
+        disp = pts[:, 0] - rpt[:, 0]                                      # disparity (px)
+        dv = np.abs(pts[:, 1] - rpt[:, 1])                                # vertical residual (px)
         ok_s = (sr.ravel() == 1) & (disp > DISP_MIN) & (dv < STEREO_V_TOL)
+        # disparity -> metric depth via rectified stereo relation Z = fx*B/disp
         depth = np.where(disp > DISP_MIN, FX * BASELINE / np.maximum(disp, 1e-6), -1.0)
-        ok_s = ok_s & (depth > DEPTH_MIN) & (depth < DEPTH_MAX)
+        ok_s = ok_s & (depth > DEPTH_MIN) & (depth < DEPTH_MAX)           # plausible depths only
 
+        # PAIRING CONSTRAINT: a feature is written only if it has BOTH a good
+        # temporal track AND a valid stereo depth.
         keep = ok_t & ok_s
         for j in np.where(keep)[0]:
             trk.write("%d,%.9f,%.3f,%.3f,%.4f,%.3f,%.3f\n" %

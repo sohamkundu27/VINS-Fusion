@@ -61,27 +61,37 @@ def main():
     est.align(ref, correct_scale=False)
     N = est.num_poses
 
+    # --- ATE: Absolute Trajectory Error = per-pose translational distance between
+    #     the aligned estimate and ground truth (global consistency). ---
     ate = metrics.APE(metrics.PoseRelation.translation_part)
     ate.process_data((ref, est))
     ate_err = np.array(ate.error)
 
+    # --- RPE: Relative Pose Error over a 100-frame window = local drift that does
+    #     NOT accumulate previous error (translational part only). ---
     rpe = metrics.RPE(metrics.PoseRelation.translation_part,
                       delta=RPE_DELTA, delta_unit=metrics.Unit.frames,
                       rel_delta_tol=0.1, all_pairs=False)
     rpe.process_data((ref, est))
     rpe_err = np.array(rpe.error)
 
+    # --- Attitude error: geodesic angle of the relative rotation R_ref^T R_est.
+    #     angle = arccos((trace(R_err) - 1) / 2). Computed by hand because evo's
+    #     SO(3) validator rejects matrices after float drift from alignment. ---
     att = []
     for P_ref, P_est in zip(ref.poses_se3, est.poses_se3):
-        R_err = P_ref[:3, :3].T @ P_est[:3, :3]
+        R_err = P_ref[:3, :3].T @ P_est[:3, :3]                         # relative rotation
         att.append(np.degrees(np.arccos(np.clip((np.trace(R_err) - 1) / 2, -1, 1))))
     att = np.array(att)
 
+    # --- F-score @2m: fraction of poses within 2 m. With 1:1 correspondence
+    #     precision == recall == inliers/N, so F = that same fraction. ---
     n_in = int(np.sum(ate_err < THRESHOLD))
     p = r = n_in / N
     fscore = (2 * p * r / (p + r)) if (p + r) > 0 else 0.0
 
-    # velocity: finite differences on aligned positions vs GT positions
+    # --- Velocity error: per-step speed from finite differences on positions
+    #     (||Δpos|| / Δt), estimate vs ground truth, compared element-wise. ---
     def speeds(traj):
         pos = traj.positions_xyz
         t = traj.timestamps

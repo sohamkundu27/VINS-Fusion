@@ -41,17 +41,20 @@ def main():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            v = line.replace(",", " ").split()
-            ts_ns = int(v[0])
-            tx, ty, tz = float(v[1]), float(v[2]), float(v[3])
-            qx, qy, qz, qw = float(v[4]), float(v[5]), float(v[6]), float(v[7])
+            v = line.replace(",", " ").split()                 # GNSSPoses is comma-separated
+            ts_ns = int(v[0])                                   # timestamp in nanoseconds
+            tx, ty, tz = float(v[1]), float(v[2]), float(v[3])  # camera position in world
+            qx, qy, qz, qw = float(v[4]), float(v[5]), float(v[6]), float(v[7])  # cam orient (xyzw)
+            # build the 4x4 camera-in-world pose T_w_cam from quaternion + translation
             T_w_cam = np.eye(4)
             T_w_cam[:3, :3] = Rotation.from_quat([qx, qy, qz, qw]).as_matrix()
             T_w_cam[:3, 3] = [tx, ty, tz]
+            # compose with cam0->imu to express the IMU body pose in world:
+            #   T_w_imu = T_w_cam * T_cam0_imu  (matches VINS output frame)
             T_w_imu = T_w_cam @ T_cam0_to_imu
-            q = Rotation.from_matrix(T_w_imu[:3, :3]).as_quat()  # xyzw
-            t = T_w_imu[:3, 3]
-            ts_s = ts_ns / 1e9
+            q = Rotation.from_matrix(T_w_imu[:3, :3]).as_quat()  # back to quaternion (xyzw)
+            t = T_w_imu[:3, 3]                                   # IMU position in world
+            ts_s = ts_ns / 1e9                                  # ns -> seconds for TUM format
             out.append("%.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f" %
                        (ts_s, t[0], t[1], t[2], q[0], q[1], q[2], q[3]))
     with open(dst, "w") as f:

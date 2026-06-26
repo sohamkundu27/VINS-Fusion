@@ -50,45 +50,79 @@ DEPTH_MIN, DEPTH_MAX = 0.0, 80.0
 
 
 def load_poses(seq):
-    """KITTI 3x4 row-major poses -> list of (R(3x3), t(3))."""
+    """Read KITTI ground-truth poses file (poses/SEQ.txt).
+
+    Each line is a 3x4 row-major camera-to-world matrix (12 numbers): the first
+    3x3 block is rotation R (camera->world), the last column is translation t.
+    Returns one (R, t) tuple per frame, index-aligned with the image frames.
+    """
     P = []
     for line in open(os.path.join(KITTI, "poses", f"{seq}.txt")):
-        m = np.array(list(map(float, line.split()))).reshape(3, 4)
-        P.append((m[:, :3], m[:, 3]))
+        m = np.array(list(map(float, line.split()))).reshape(3, 4)  # 12 floats -> 3x4
+        P.append((m[:, :3], m[:, 3]))                                # (R 3x3, t 3,)
     return P
 
 
 def load_times(seq):
+    """Read per-frame capture timestamps (seconds) from sequences/SEQ/times.txt.
+    Used as dt for the finite-difference velocity (one value per frame)."""
     return np.array([float(x) for x in open(os.path.join(KITTI, "sequences", seq, "times.txt"))])
 
 
 def compute_depth_map(imL, imR, fx, baseline):
-    """SGBM disparity -> depth map (metres). Invalid -> +inf."""
-    disp = SGBM.compute(imL, imR).astype(np.float32) / 16.0   # SGBM is fixed-point (1/16 px)
-    valid = (disp > 0) & (disp < MAX_DISP)
-    depth = np.full(disp.shape, np.inf, np.float32)
-    depth[valid] = (fx * baseline) / disp[valid]
+    """Dense stereo depth via Semi-Global Block Matching.
+
+    Steps:
+      1. SGBM.compute returns disparity as a fixed-point int16 scaled by 16,
+         so we divide by 16.0 to get sub-pixel disparity in real pixels.
+      2. A disparity is only trustworthy when it is strictly positive and below
+         the search range (NUM_DISP); everything else is marked invalid.
+      3. Convert disparity d to metric depth with the stereo pinhole relation
+         depth = (focal_length_px * baseline_m) / disparity_px.
+      4. Invalid pixels are left as +inf so they get filtered out downstream.
+    """
+    disp = SGBM.compute(imL, imR).astype(np.float32) / 16.0   # un-scale SGBM fixed-point
+    valid = (disp > 0) & (disp < MAX_DISP)                    # keep only reliable disparities
+    depth = np.full(disp.shape, np.inf, np.float32)           # default = invalid
+    depth[valid] = (fx * baseline) / disp[valid]              # d -> Z in metres
     return depth
 
 
 def feature_tracks(imL_t, imL_t1):
-    """goodFeaturesToTrack on t, KLT to t+1, forward-backward consistency."""
+    """Detect corners in frame t and track them to t+1 with a consistency check.
+
+    Steps:
+      1. goodFeaturesToTrack picks up to 500 strong Shi-Tomasi corners in left[t].
+      2. calcOpticalFlowPyrLK (pyramidal Lucas-Kanade) tracks each corner FORWARD
+         from t -> t+1, giving p1 and a per-point success flag st1.
+      3. We track the result BACKWARD t+1 -> t (p0r). If LK is consistent, p0r
+         should land back on the original p0.
+      4. forward-backward error = ||p0 - p0r||. Keep a feature only if both LK
+         directions succeeded AND the round-trip error is < 1 px (FB_THRESH).
+         This is the same robustness filter VINS-Fusion's feature_tracker uses.
+    Returns the surviving (p0 at t, p1 at t+1) pixel arrays.
+    """
     p0 = cv2.goodFeaturesToTrack(imL_t, **GFTT)
-    if p0 is None:
+    if p0 is None:                                            # no corners found this frame
         return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32)
     p0 = p0.reshape(-1, 2).astype(np.float32)
-    p1, st1, _ = cv2.calcOpticalFlowPyrLK(imL_t, imL_t1, p0, None, **LK)
-    p0r, st2, _ = cv2.calcOpticalFlowPyrLK(imL_t1, imL_t, p1, None, **LK)
-    fb = np.linalg.norm(p0 - p0r, axis=1)
-    ok = (st1.ravel() == 1) & (st2.ravel() == 1) & (fb < FB_THRESH)
+    p1, st1, _ = cv2.calcOpticalFlowPyrLK(imL_t, imL_t1, p0, None, **LK)   # forward  t -> t+1
+    p0r, st2, _ = cv2.calcOpticalFlowPyrLK(imL_t1, imL_t, p1, None, **LK)  # backward t+1 -> t
+    fb = np.linalg.norm(p0 - p0r, axis=1)                    # round-trip pixel error
+    ok = (st1.ravel() == 1) & (st2.ravel() == 1) & (fb < FB_THRESH)        # both ok + consistent
     return p0[ok], p1[ok]
 
 
 def lookup_depth(depth_map, pts):
-    """Nearest-pixel depth lookup; returns depth array (inf where out of bounds)."""
+    """Sample the dense depth map at each (sub-pixel) feature location.
+
+    Rounds each feature (x, y) to the nearest integer pixel, clamps it to the
+    image bounds, and reads the depth there. Pixels with no valid stereo match
+    come back as +inf and are dropped by the caller's depth filter.
+    """
     h, w = depth_map.shape
-    xi = np.clip(np.round(pts[:, 0]).astype(int), 0, w - 1)
-    yi = np.clip(np.round(pts[:, 1]).astype(int), 0, h - 1)
+    xi = np.clip(np.round(pts[:, 0]).astype(int), 0, w - 1)  # column index, bounded
+    yi = np.clip(np.round(pts[:, 1]).astype(int), 0, h - 1)  # row index, bounded
     return depth_map[yi, xi]
 
 
@@ -126,35 +160,42 @@ def process_sequence(seq):
     sum_feat = sum_depth = sum_speed = 0.0
     cnt_feat_frames = 0
     for t in range(nf):
+        # --- load the stereo pair for frame t (grayscale, as KITTI ships them) ---
         imL = cv2.imread(os.path.join(Ldir, f"{t:06d}.png"), cv2.IMREAD_GRAYSCALE)
         imR = cv2.imread(os.path.join(Rdir, f"{t:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        # --- (1) dense stereo depth map for this frame ---
         depth_map = compute_depth_map(imL, imR, fx, baseline)
 
         last = (t == nf - 1)
         if not last:
+            # --- (2) tracks need frame t+1; detect+track+FB-check ---
             imL1 = cv2.imread(os.path.join(Ldir, f"{t+1:06d}.png"), cv2.IMREAD_GRAYSCALE)
             p_t, p_t1 = feature_tracks(imL, imL1)
         else:
-            # no t+1: depth-only features (goodFeaturesToTrack), zero tracks/velocity
+            # last frame has no t+1: keep depth-only corners, zero the (nonexistent) tracks
             p0 = cv2.goodFeaturesToTrack(imL, **GFTT)
             p_t = p0.reshape(-1, 2).astype(np.float32) if p0 is not None else np.empty((0, 2), np.float32)
             p_t1 = np.zeros_like(p_t)
 
+        # --- (3) enforce the pairing constraint: every kept feature must have a
+        #         valid metric depth (0 < Z < 80 m, finite). Tracks and depths are
+        #         filtered with the SAME mask so the arrays stay row-aligned. ---
         d = lookup_depth(depth_map, p_t) if len(p_t) else np.empty((0,), np.float32)
         keep = np.isfinite(d) & (d > DEPTH_MIN) & (d < DEPTH_MAX)
         p_t, p_t1, d = p_t[keep], p_t1[keep], d[keep].astype(np.float32)
         if last:
-            p_t1 = np.zeros_like(p_t)
+            p_t1 = np.zeros_like(p_t)                         # spec: zero tracks on last frame
 
-        # GT velocity in camera frame
+        # --- (4) ground-truth velocity expressed in the camera frame ---
         if not last:
-            R_t, _ = poses[t]
-            dt = times[t + 1] - times[t]
-            v_world = (poses[t + 1][1] - poses[t][1]) / dt
-            v_cam = (R_t.T @ v_world).astype(np.float32)
+            R_t, _ = poses[t]                                 # camera->world rotation at t
+            dt = times[t + 1] - times[t]                      # real capture interval (s)
+            v_world = (poses[t + 1][1] - poses[t][1]) / dt    # finite-diff world velocity
+            v_cam = (R_t.T @ v_world).astype(np.float32)      # rotate world->camera frame
         else:
-            v_cam = np.zeros(3, np.float32)
+            v_cam = np.zeros(3, np.float32)                   # spec: zero velocity on last frame
 
+        # --- persist this frame: 6 arrays, exactly the PM-requested schema ---
         np.savez(os.path.join(outdir, f"frame_{t:06d}.npz"),
                  feature_pixels_t=p_t.astype(np.float32),
                  feature_pixels_t1=p_t1.astype(np.float32),
