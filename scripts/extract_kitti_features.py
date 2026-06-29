@@ -12,7 +12,12 @@ Per time step t:
   4. GT VELOCITY (cam frame): v_world = (pos[t+1]-pos[t]) / (time[t+1]-time[t]);
                               v_cam = R[t].T @ v_world
 
-Output: ~/datasets/kitti/extracted/seq_XX/frame_NNNNNN.npz  (+ metadata.json + viz/)
+Output: ~/datasets/kitti/extracted/seq_XX/
+  frame_NNNNNN.npz        per-frame arrays (features, depths, gt velocity)
+  metadata.json           sequence-level stats + intrinsics
+  viz/frame_NNNNNN.png    overlay every 100th frame
+  tracks_depth.{csv,txt}  flat table: frame_idx,timestamp,u,v,depth_m,u_next,v_next
+  velocity.{csv,txt}      flat table: frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps
 """
 import os, sys, json, glob
 import numpy as np
@@ -156,6 +161,18 @@ def process_sequence(seq):
     vizdir = os.path.join(outdir, "viz")
     os.makedirs(vizdir, exist_ok=True)
 
+    # Flat-table exports written alongside the .npz, in both .csv and .txt:
+    #   tracks_depth.{csv,txt} : frame_idx,timestamp,u,v,depth_m,u_next,v_next
+    #   velocity.{csv,txt}     : frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps
+    trk_hdr = "frame_idx,timestamp,u,v,depth_m,u_next,v_next"
+    vel_hdr = "frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps"
+    trk_csv = open(os.path.join(outdir, "tracks_depth.csv"), "w")
+    trk_txt = open(os.path.join(outdir, "tracks_depth.txt"), "w")
+    vel_csv = open(os.path.join(outdir, "velocity.csv"), "w")
+    vel_txt = open(os.path.join(outdir, "velocity.txt"), "w")
+    trk_csv.write(trk_hdr + "\n"); trk_txt.write(trk_hdr.replace(",", " ") + "\n")
+    vel_csv.write(vel_hdr + "\n"); vel_txt.write(vel_hdr.replace(",", " ") + "\n")
+
     print(f"\n=== sequence {seq}: {nf} frames ===")
     sum_feat = sum_depth = sum_speed = 0.0
     cnt_feat_frames = 0
@@ -204,6 +221,16 @@ def process_sequence(seq):
                  timestamp=np.float64(times[t]),
                  frame_idx=int(t))
 
+        # --- append this frame to the flat CSV/TXT tables (skip the last frame:
+        #     its tracks/velocity are zero placeholders) ---
+        if not last:
+            for (u, v), (un, vn), dd in zip(p_t, p_t1, d):
+                row = "%d,%.9f,%.3f,%.3f,%.4f,%.3f,%.3f" % (t, times[t], u, v, dd, un, vn)
+                trk_csv.write(row + "\n"); trk_txt.write(row.replace(",", " ") + "\n")
+            speed = float(np.linalg.norm(v_cam))
+            vrow = "%d,%.9f,%.5f,%.5f,%.5f,%.5f" % (t, times[t], v_cam[0], v_cam[1], v_cam[2], speed)
+            vel_csv.write(vrow + "\n"); vel_txt.write(vrow.replace(",", " ") + "\n")
+
         if len(d):
             sum_feat += len(d); sum_depth += float(np.mean(d)); cnt_feat_frames += 1
         sum_speed += float(np.linalg.norm(v_cam))
@@ -213,6 +240,9 @@ def process_sequence(seq):
             md = float(np.mean(d)) if len(d) else 0.0
             print(f"  frame {t}/{nf} | features tracked: {len(d)} | "
                   f"mean depth: {md:.1f}m | gt speed: {np.linalg.norm(v_cam):.2f} m/s")
+
+    for f in (trk_csv, trk_txt, vel_csv, vel_txt):
+        f.close()
 
     meta = dict(sequence=seq, num_frames=nf,
                 fx=cam["fx"], fy=cam["fy"], cx=cam["cx"], cy=cam["cy"],
