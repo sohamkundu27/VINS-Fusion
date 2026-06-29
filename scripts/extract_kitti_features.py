@@ -19,16 +19,16 @@ Output: ~/datasets/kitti/extracted/seq_XX/
   tracks_depth.{csv,txt}  flat table: frame_idx,timestamp,u,v,depth_m,u_next,v_next
   velocity.{csv,txt}      flat table: frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps
 """
-import os, sys, json, glob
+import sys, json, glob
+from pathlib import Path
 import numpy as np
 import cv2
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-HOME = os.path.expanduser("~")
-KITTI = os.path.join(HOME, "datasets/kitti/dataset")
-OUTROOT = os.path.join(HOME, "datasets/kitti/extracted")
+KITTI = "/home/soham/datasets/kitti/dataset"
+OUTROOT = "/home/soham/datasets/kitti/extracted"
 
 # Per-sequence camera intrinsics + stereo baseline (metres)
 CAM = {
@@ -62,7 +62,7 @@ def load_poses(seq):
     Returns one (R, t) tuple per frame, index-aligned with the image frames.
     """
     P = []
-    for line in open(os.path.join(KITTI, "poses", f"{seq}.txt")):
+    for line in open(f"{KITTI}/poses/{seq}.txt"):
         m = np.array(list(map(float, line.split()))).reshape(3, 4)  # 12 floats -> 3x4
         P.append((m[:, :3], m[:, 3]))                                # (R 3x3, t 3,)
     return P
@@ -71,7 +71,7 @@ def load_poses(seq):
 def load_times(seq):
     """Read per-frame capture timestamps (seconds) from sequences/SEQ/times.txt.
     Used as dt for the finite-difference velocity (one value per frame)."""
-    return np.array([float(x) for x in open(os.path.join(KITTI, "sequences", seq, "times.txt"))])
+    return np.array([float(x) for x in open(f"{KITTI}/sequences/{seq}/times.txt")])
 
 
 def compute_depth_map(imL, imR, fx, baseline):
@@ -152,24 +152,24 @@ def save_viz(path, imL, p_t, p_t1, depths, v_cam):
 def process_sequence(seq):
     cam = CAM[seq]
     fx, baseline = cam["fx"], cam["baseline"]
-    seqdir = os.path.join(KITTI, "sequences", seq)
-    Ldir, Rdir = os.path.join(seqdir, "image_0"), os.path.join(seqdir, "image_1")
-    frames = sorted(glob.glob(os.path.join(Ldir, "*.png")))
+    seqdir = f"{KITTI}/sequences/{seq}"
+    Ldir, Rdir = f"{seqdir}/image_0", f"{seqdir}/image_1"
+    frames = sorted(glob.glob(f"{Ldir}/*.png"))
     nf = len(frames)
     poses, times = load_poses(seq), load_times(seq)
-    outdir = os.path.join(OUTROOT, f"seq_{seq}")
-    vizdir = os.path.join(outdir, "viz")
-    os.makedirs(vizdir, exist_ok=True)
+    outdir = f"{OUTROOT}/seq_{seq}"
+    vizdir = f"{outdir}/viz"
+    Path(vizdir).mkdir(parents=True, exist_ok=True)
 
     # Flat-table exports written alongside the .npz, in both .csv and .txt:
     #   tracks_depth.{csv,txt} : frame_idx,timestamp,u,v,depth_m,u_next,v_next
     #   velocity.{csv,txt}     : frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps
     trk_hdr = "frame_idx,timestamp,u,v,depth_m,u_next,v_next"
     vel_hdr = "frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps"
-    trk_csv = open(os.path.join(outdir, "tracks_depth.csv"), "w")
-    trk_txt = open(os.path.join(outdir, "tracks_depth.txt"), "w")
-    vel_csv = open(os.path.join(outdir, "velocity.csv"), "w")
-    vel_txt = open(os.path.join(outdir, "velocity.txt"), "w")
+    trk_csv = open(f"{outdir}/tracks_depth.csv", "w")
+    trk_txt = open(f"{outdir}/tracks_depth.txt", "w")
+    vel_csv = open(f"{outdir}/velocity.csv", "w")
+    vel_txt = open(f"{outdir}/velocity.txt", "w")
     trk_csv.write(trk_hdr + "\n"); trk_txt.write(trk_hdr.replace(",", " ") + "\n")
     vel_csv.write(vel_hdr + "\n"); vel_txt.write(vel_hdr.replace(",", " ") + "\n")
 
@@ -178,15 +178,15 @@ def process_sequence(seq):
     cnt_feat_frames = 0
     for t in range(nf):
         # --- load the stereo pair for frame t (grayscale, as KITTI ships them) ---
-        imL = cv2.imread(os.path.join(Ldir, f"{t:06d}.png"), cv2.IMREAD_GRAYSCALE)
-        imR = cv2.imread(os.path.join(Rdir, f"{t:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        imL = cv2.imread(f"{Ldir}/{t:06d}.png", cv2.IMREAD_GRAYSCALE)
+        imR = cv2.imread(f"{Rdir}/{t:06d}.png", cv2.IMREAD_GRAYSCALE)
         # --- (1) dense stereo depth map for this frame ---
         depth_map = compute_depth_map(imL, imR, fx, baseline)
 
         last = (t == nf - 1)
         if not last:
             # --- (2) tracks need frame t+1; detect+track+FB-check ---
-            imL1 = cv2.imread(os.path.join(Ldir, f"{t+1:06d}.png"), cv2.IMREAD_GRAYSCALE)
+            imL1 = cv2.imread(f"{Ldir}/{t+1:06d}.png", cv2.IMREAD_GRAYSCALE)
             p_t, p_t1 = feature_tracks(imL, imL1)
         else:
             # last frame has no t+1: keep depth-only corners, zero the (nonexistent) tracks
@@ -213,7 +213,7 @@ def process_sequence(seq):
             v_cam = np.zeros(3, np.float32)                   # spec: zero velocity on last frame
 
         # --- persist this frame: 6 arrays, exactly the PM-requested schema ---
-        np.savez(os.path.join(outdir, f"frame_{t:06d}.npz"),
+        np.savez(f"{outdir}/frame_{t:06d}.npz",
                  feature_pixels_t=p_t.astype(np.float32),
                  feature_pixels_t1=p_t1.astype(np.float32),
                  depths=d,
@@ -236,7 +236,7 @@ def process_sequence(seq):
         sum_speed += float(np.linalg.norm(v_cam))
 
         if t % 100 == 0:
-            save_viz(os.path.join(vizdir, f"frame_{t:06d}.png"), imL, p_t, p_t1, d, v_cam)
+            save_viz(f"{vizdir}/frame_{t:06d}.png", imL, p_t, p_t1, d, v_cam)
             md = float(np.mean(d)) if len(d) else 0.0
             print(f"  frame {t}/{nf} | features tracked: {len(d)} | "
                   f"mean depth: {md:.1f}m | gt speed: {np.linalg.norm(v_cam):.2f} m/s")
@@ -251,7 +251,7 @@ def process_sequence(seq):
                 mean_depth_per_frame=sum_depth / max(cnt_feat_frames, 1),
                 mean_gt_speed=sum_speed / nf,
                 last_frame_has_zero_tracks=True)
-    json.dump(meta, open(os.path.join(outdir, "metadata.json"), "w"), indent=2)
+    json.dump(meta, open(f"{outdir}/metadata.json", "w"), indent=2)
     print(f"  -> {outdir}  (avg feat={meta['mean_features_per_frame']:.1f}, "
           f"avg depth={meta['mean_depth_per_frame']:.1f}m, avg speed={meta['mean_gt_speed']:.2f} m/s)")
     return meta
@@ -259,7 +259,7 @@ def process_sequence(seq):
 
 if __name__ == "__main__":
     seqs = sys.argv[1:] or ["00", "01", "05"]
-    os.makedirs(OUTROOT, exist_ok=True)
+    Path(OUTROOT).mkdir(parents=True, exist_ok=True)
     metas = [process_sequence(s) for s in seqs]
     print("\n==== FINAL SUMMARY ====")
     print("| Seq | Frames | Avg features/frame | Avg depth (m) | Avg GT speed (m/s) |")

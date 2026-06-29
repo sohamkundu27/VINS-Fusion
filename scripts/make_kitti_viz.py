@@ -19,30 +19,30 @@ Usage:
   python make_kitti_viz.py [--every N] [--ext jpg|png] [--seqs 00 01 05]
   --every 1  -> every frame (default)   --every 100 -> sparse
 """
-import os, glob, argparse
+import glob, argparse
+from pathlib import Path
 import numpy as np
 import cv2
 
-HOME = os.path.expanduser("~")
-KITTI = os.path.join(HOME, "datasets/kitti/dataset")
-OUTROOT = os.path.join(HOME, "datasets/kitti/extracted")
+KITTI = "/home/soham/datasets/kitti/dataset"
+OUTROOT = "/home/soham/datasets/kitti/extracted"
 
 # BGR colors
 BLUE, GREEN, YELLOW, RED, WHITE = (255, 0, 0), (0, 255, 0), (0, 255, 255), (0, 0, 255), (255, 255, 255)
 
 
 def render(seq, every, ext):
-    outdir = os.path.join(OUTROOT, f"seq_{seq}")
-    vizdir = os.path.join(outdir, "viz_full")
-    os.makedirs(vizdir, exist_ok=True)
-    npzs = sorted(glob.glob(os.path.join(outdir, "frame_*.npz")))  # one .npz per frame
+    outdir = f"{OUTROOT}/seq_{seq}"
+    vizdir = f"{outdir}/viz_full"
+    Path(vizdir).mkdir(parents=True, exist_ok=True)
+    npzs = sorted(glob.glob(f"{outdir}/frame_*.npz"))  # one .npz per frame
     n = 0
     for t, npz in enumerate(npzs):
         if t % every != 0:                      # --every lets you subsample (1 = all frames)
             continue
         d = np.load(npz)                         # load this frame's extracted arrays
         # read the left image in COLOR so the overlays show up in colour
-        img = cv2.imread(os.path.join(KITTI, "sequences", seq, "image_0", f"{t:06d}.png"))
+        img = cv2.imread(f"{KITTI}/sequences/{seq}/image_0/{t:06d}.png")
         if img is None:
             continue
         pt, pt1, dep = d["feature_pixels_t"], d["feature_pixels_t1"], d["depths"]
@@ -69,7 +69,7 @@ def render(seq, every, ext):
             cv2.putText(img, txt, (8, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.putText(img, txt, (8, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1, cv2.LINE_AA)
         # write compact JPEG (default) or lossless PNG depending on --ext
-        out = os.path.join(vizdir, f"frame_{t:06d}.{ext}")
+        out = f"{vizdir}/frame_{t:06d}.{ext}"
         if ext == "jpg":
             cv2.imwrite(out, img, [cv2.IMWRITE_JPEG_QUALITY, 80])
         else:

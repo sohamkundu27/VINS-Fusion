@@ -16,17 +16,17 @@ For each sequence (00, 01, 05):
   - update metadata.json with mean_velocity_error_rmse
 Velocity in the body frame is alignment-invariant, so no trajectory alignment is needed.
 """
-import os, json, glob
+import json, glob
+from pathlib import Path
 import numpy as np
 import cv2
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-HOME = os.path.expanduser("~")
-KITTI = os.path.join(HOME, "datasets/kitti/dataset")
-OUTROOT = os.path.join(HOME, "datasets/kitti/extracted")
-VIODIR = os.path.join(HOME, "datasets/kitti/output")
+KITTI = "/home/soham/datasets/kitti/dataset"
+OUTROOT = "/home/soham/datasets/kitti/extracted"
+VIODIR = "/home/soham/datasets/kitti/output"
 SEQS = ["00", "01", "05"]
 
 
@@ -43,13 +43,13 @@ def load_vio_txt(path):
 
 
 def load_times(seq):
-    return np.array([float(x) for x in open(os.path.join(KITTI, "sequences", seq, "times.txt"))])
+    return np.array([float(x) for x in open(f"{KITTI}/sequences/{seq}/times.txt")])
 
 
 def csv_velocity_usable(seq):
     """Return True only if vio_XX.csv has non-trivial vx,vy,vz (it doesn't for no-IMU runs)."""
-    p = os.path.join(VIODIR, f"vio_{seq}.csv")
-    if not os.path.exists(p):
+    p = f"{VIODIR}/vio_{seq}.csv"
+    if not Path(p).exists():
         return False
     sp = []
     for line in open(p):
@@ -68,7 +68,7 @@ def predicted_velocities(seq):
     Because each velocity is projected into its own camera frame, GT and prediction
     are directly comparable without any trajectory alignment. Last frame -> zeros.
     """
-    R, P = load_vio_txt(os.path.join(VIODIR, f"vio_{seq}.txt"))  # R_est[t], pos_est[t]
+    R, P = load_vio_txt(f"{VIODIR}/vio_{seq}.txt")  # R_est[t], pos_est[t]
     times = load_times(seq)                                       # capture times (s)
     nf = len(P)
     vcam = np.zeros((nf, 3), np.float32)                          # default 0 (covers last frame)
@@ -82,7 +82,7 @@ def predicted_velocities(seq):
 
 
 def regen_viz(seq, t, vcam_pred_t, gt_vel_t, p_t, p_t1, depths, vizpath):
-    imL = cv2.imread(os.path.join(KITTI, "sequences", seq, "image_0", f"{t:06d}.png"),
+    imL = cv2.imread(f"{KITTI}/sequences/{seq}/image_0/{t:06d}.png",
                      cv2.IMREAD_GRAYSCALE)
     err = vcam_pred_t - gt_vel_t
     errmag = float(np.linalg.norm(err))
@@ -110,10 +110,10 @@ def regen_viz(seq, t, vcam_pred_t, gt_vel_t, p_t, p_t1, depths, vizpath):
 
 
 def process(seq):
-    outdir = os.path.join(OUTROOT, f"seq_{seq}")
-    vizdir = os.path.join(outdir, "viz")
-    os.makedirs(vizdir, exist_ok=True)
-    npzs = sorted(glob.glob(os.path.join(outdir, "frame_*.npz")))
+    outdir = f"{OUTROOT}/seq_{seq}"
+    vizdir = f"{outdir}/viz"
+    Path(vizdir).mkdir(parents=True, exist_ok=True)
+    npzs = sorted(glob.glob(f"{outdir}/frame_*.npz"))
     nf = len(npzs)
     use_csv = csv_velocity_usable(seq)
     vcam_pred = predicted_velocities(seq)
@@ -137,13 +137,13 @@ def process(seq):
 
         if t % 100 == 0:
             regen_viz(seq, t, pred, gt_vel, d["feature_pixels_t"], d["feature_pixels_t1"],
-                      d["depths"], os.path.join(vizdir, f"frame_{t:06d}.png"))
+                      d["depths"], f"{vizdir}/frame_{t:06d}.png")
 
     vel_rmse = float(np.sqrt(np.mean(sq_err)))
-    meta = json.load(open(os.path.join(outdir, "metadata.json")))
+    meta = json.load(open(f"{outdir}/metadata.json"))
     meta["mean_velocity_error_rmse"] = vel_rmse
     meta["pred_velocity_source"] = "vio.csv vx,vy,vz" if use_csv else "finite-diff on vio.txt (no-IMU run: csv velocity all-zero)"
-    json.dump(meta, open(os.path.join(outdir, "metadata.json"), "w"), indent=2)
+    json.dump(meta, open(f"{outdir}/metadata.json", "w"), indent=2)
 
     return dict(seq=seq, gt_speed=float(np.mean(gt_speeds)),
                 pred_speed=float(np.mean(pred_speeds)), vel_rmse=vel_rmse,

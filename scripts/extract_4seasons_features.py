@@ -17,7 +17,8 @@ Outputs (per sequence, in features/<label>/):
   velocity.csv     / .txt : frame_idx, timestamp, vx_cam, vy_cam, vz_cam, speed_mps
   summary.txt
 """
-import os, sys, glob
+import sys, glob
+from pathlib import Path
 import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation, Slerp
@@ -42,7 +43,7 @@ DEPTH_MIN, DEPTH_MAX = 1.0, 100.0   # keep plausible driving depths (m)
 
 def find_cam_dir(seqroot, cam):
     for pat in ["undistorted_images/%s" % cam, "*/%s" % cam, cam]:
-        hits = [h for h in glob.glob(os.path.join(seqroot, pat)) if os.path.isdir(h)]
+        hits = [h for h in glob.glob(f"{seqroot}/{pat}") if Path(h).is_dir()]
         if hits:
             return hits[0]
     raise RuntimeError("no %s dir under %s" % (cam, seqroot))
@@ -85,21 +86,22 @@ def camera_frame_velocity(gnss_ts, gnss_pos, gnss_quat, img_ts):
 
 
 def process(seqroot, gnss_path, label, outdir):
-    os.makedirs(outdir, exist_ok=True)
+    Path(outdir).mkdir(parents=True, exist_ok=True)
     cam0 = find_cam_dir(seqroot, "cam0")
     cam1 = find_cam_dir(seqroot, "cam1")
-    f0 = sorted(glob.glob(os.path.join(cam0, "*.png")), key=lambda p: int(os.path.splitext(os.path.basename(p))[0]))
-    names = [os.path.splitext(os.path.basename(p))[0] for p in f0]
+    # image filenames are "<timestamp_ns>.png"; Path(p).stem is the bare timestamp
+    f0 = sorted(glob.glob(f"{cam0}/*.png"), key=lambda p: int(Path(p).stem))
+    names = [Path(p).stem for p in f0]
     ts = np.array([int(n) / 1e9 for n in names])
-    right = {os.path.splitext(os.path.basename(p))[0]: p for p in glob.glob(os.path.join(cam1, "*.png"))}
+    right = {Path(p).stem: p for p in glob.glob(f"{cam1}/*.png")}
     print("[%s] frames=%d" % (label, len(f0)))
 
     gts, gpos, gquat = load_gnss(gnss_path)
     vcam, vvalid = camera_frame_velocity(gts, gpos, gquat, ts)
 
-    trk = open(os.path.join(outdir, "tracks_depth.csv"), "w")
+    trk = open(f"{outdir}/tracks_depth.csv", "w")
     trk.write("frame_idx,timestamp,u,v,depth_m,u_next,v_next\n")
-    vel = open(os.path.join(outdir, "velocity.csv"), "w")
+    vel = open(f"{outdir}/velocity.csv", "w")
     vel.write("frame_idx,timestamp,vx_cam,vy_cam,vz_cam,speed_mps\n")
 
     n_feat_total = 0
@@ -154,12 +156,12 @@ def process(seqroot, gnss_path, label, outdir):
 
     # txt mirrors (space-separated)
     for base in ["tracks_depth", "velocity"]:
-        with open(os.path.join(outdir, base + ".csv")) as fin, \
-             open(os.path.join(outdir, base + ".txt"), "w") as fout:
+        with open(f"{outdir}/{base}.csv") as fin, \
+             open(f"{outdir}/{base}.txt", "w") as fout:
             for line in fin:
                 fout.write(line.replace(",", " "))
 
-    with open(os.path.join(outdir, "summary.txt"), "w") as s:
+    with open(f"{outdir}/summary.txt", "w") as s:
         s.write("sequence: %s\n" % label)
         s.write("frames: %d\n" % len(f0))
         s.write("total kept features (tracked+depth): %d\n" % n_feat_total)

@@ -15,7 +15,7 @@ Usage (inside container):
   python build_bag.py <sequence_dir> <imu_txt> <out_bag>
 where <sequence_dir> contains distorted_images/cam0/*.png and cam1/*.png
 """
-import sys, os, glob
+import sys, glob
 import rospy, rosbag
 from sensor_msgs.msg import Imu
 from cv_bridge import CvBridge
@@ -26,8 +26,8 @@ def find_cam_dir(seqdir, cam):
     for pat in ["distorted_images/%s" % cam,
                 "undistorted_images/%s" % cam,
                 "*/%s" % cam, cam]:
-        hits = glob.glob(os.path.join(seqdir, pat))
-        hits = [h for h in hits if os.path.isdir(h)]
+        # trailing "/" makes glob match directories only; strip it back off
+        hits = [h.rstrip("/") for h in glob.glob(seqdir + "/" + pat + "/")]
         if hits:
             return hits[0]
     raise RuntimeError("cannot find image dir for %s under %s" % (cam, seqdir))
@@ -45,12 +45,12 @@ def main():
     # 4Seasons names every image file by its capture timestamp in nanoseconds.
     # Index cam0 and cam1 frames by that timestamp string so we can pair them.
     c0 = {}
-    for p in glob.glob(os.path.join(cam0, "*.png")):
-        ts = os.path.splitext(os.path.basename(p))[0]   # "<timestamp_ns>.png" -> "<timestamp_ns>"
+    for p in glob.glob(cam0 + "/*.png"):
+        ts = p.split("/")[-1].rsplit(".", 1)[0]   # "<timestamp_ns>.png" -> "<timestamp_ns>"
         c0[ts] = p
     c1 = {}
-    for p in glob.glob(os.path.join(cam1, "*.png")):
-        ts = os.path.splitext(os.path.basename(p))[0]
+    for p in glob.glob(cam1 + "/*.png"):
+        ts = p.split("/")[-1].rsplit(".", 1)[0]
         c1[ts] = p
     # keep only timestamps present in BOTH cameras (a complete stereo pair), time-ordered
     common = sorted(set(c0.keys()) & set(c1.keys()), key=lambda s: int(s))

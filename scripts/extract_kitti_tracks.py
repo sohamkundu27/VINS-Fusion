@@ -13,24 +13,24 @@ skipped, mirroring the 4Seasons output.
 Writes the FULL csv/txt under ~/datasets/kitti/extracted/seq_XX/ (large, kept
 local) and a 500-row tracks_depth_sample.csv into the repo for browsing.
 """
-import os, glob
+import glob
+from pathlib import Path
 import numpy as np
 
-HOME = os.path.expanduser("~")
-OUTROOT = os.path.join(HOME, "datasets/kitti/extracted")
-REPO = os.path.join(HOME, "github/VINS-Fusion/results/kitti/extracted")
+OUTROOT = "/home/soham/datasets/kitti/extracted"
+REPO = "/home/soham/github/VINS-Fusion/results/kitti/extracted"
 SEQS = ["00", "01", "05"]
 HEADER = "frame_idx,timestamp,u,v,depth_m,u_next,v_next"
 SAMPLE_ROWS = 500
 
 
 def process(seq):
-    outdir = os.path.join(OUTROOT, f"seq_{seq}")
-    npzs = sorted(glob.glob(os.path.join(outdir, "frame_*.npz")))
-    csv_path = os.path.join(outdir, "tracks_depth.csv")
-    txt_path = os.path.join(outdir, "tracks_depth.txt")
-    sample_path = os.path.join(REPO, f"seq_{seq}", "tracks_depth_sample.csv")
-    os.makedirs(os.path.dirname(sample_path), exist_ok=True)
+    outdir = f"{OUTROOT}/seq_{seq}"
+    npzs = sorted(glob.glob(f"{outdir}/frame_*.npz"))
+    csv_path = f"{outdir}/tracks_depth.csv"
+    txt_path = f"{outdir}/tracks_depth.txt"
+    sample_path = f"{REPO}/seq_{seq}/tracks_depth_sample.csv"
+    Path(f"{REPO}/seq_{seq}").mkdir(parents=True, exist_ok=True)
 
     n_rows = 0
     sample_lines = [HEADER]
