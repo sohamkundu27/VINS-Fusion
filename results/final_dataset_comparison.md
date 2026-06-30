@@ -16,12 +16,16 @@ actual `evo` run on a local VINS-Fusion trajectory (Docker `vins-fusion-kitti`, 
 
 ## Executive summary
 
-- **Stereo-only VINS-Fusion is reliable everywhere** we tested — **0.27 %–1.65 % drift** across
-  city, highway, suburban, snow, and off-road, with no failures.
-- **Adding the IMU is a coin-flip that depends on calibration quality.** It **helped** on 4Seasons
-  neighbor/snow and GO (−26 % to −33 % ATE), **hurt** on 4Seasons office and TD2 turnpike (+34 % to
-  +37 %), and **diverged catastrophically** on TD2 gupta (ran 5 km off a 228 m path). The IMU helps
-  only when its noise model and extrinsics are accurate; both GO and TD2 ship *assumed* IMU params.
+- **Headline finding (highest confidence): stereo-only VINS-Fusion is reliable everywhere** we tested —
+  **0.27 %–1.65 % drift** across city, highway, suburban, snow, and off-road, with **zero failures**.
+  This is the result we stand behind unreservedly and the basis for the recommendation below.
+- **Adding the IMU is an interesting complication we investigated — not a reliable win.** Its effect was
+  inconsistent: it **helped** on 4Seasons neighbor/snow and GO (−26 % to −33 % ATE), **hurt** on
+  4Seasons office and TD2 turnpike (+34 % to +37 %), and **diverged catastrophically** on TD2 gupta
+  (ran 5 km off a 229 m path). Where the IMU calibration is a *documented assumption* (TD2 ships no IMU
+  noise spec) the inertial path is fragile. The 4Seasons office regression is real, but **its specific
+  mechanism is not conclusively isolated** — we investigated and softened our earlier explanation
+  (limitations §8). Treat the IMU as an optimisation to be earned per dataset, not a default.
 - **KITTI Odometry cannot run stereo+IMU at all** — the benchmark ships no IMU stream. Marked `N/A`.
 - **For an official/commercial continuation, TartanDrive 2.0 (MIT) stereo-only is the recommendation.**
   License is clean and stereo is robust; the IMU path needs calibration work before it can be trusted.
@@ -53,7 +57,8 @@ Drift% = ATE RMSE ÷ ground-truth path length.
 ² **TD2 gupta stereo+IMU diverged** — the estimate ran to (−5112, −6105, −2253) m on a 229 m path
   (ATE RMSE 2338 m, ~1022 % "drift"). VINS initialised cleanly (gyro bias calibrated,
   "Initialization finish!") then the optimiser diverged, with solver time blowing past budget
-  (4.5 s/frame vs 0.5 s). Reported as a **failure**, not an accuracy figure. See limitations §4.
+  (median 3.2 s / mean 4.4 s per frame vs the 0.5 s budget; 99 % of frames over). Reported as a
+  **failure**, not an accuracy figure. See limitations §4 and the root-cause summary.
 
 *KITTI ATE RMSE are the tuned Run-3 configs (`max_solver_time` 0.5 s, `multiple_thread:0`); 00 and 05
 also reach 5.01 m / 3.71 m with `loop_fusion` pose-graph closure (open-loop shown for fairness).*
@@ -67,7 +72,7 @@ also reach 5.01 m / 3.71 m with `loop_fusion` pose-graph closure (open-loop show
 | Dataset / sequence | Stereo | Stereo+IMU | Δ ATE | Verdict |
 |--------------------|-------:|-----------:|------:|---------|
 | 4Seasons neighbor | 20.51 m | 13.70 m | **−33 %** | IMU helps |
-| 4Seasons office | 87.54 m | 119.93 m | **+37 %** | IMU hurts (long yaw-drift loop) |
+| 4Seasons office | 87.54 m | 119.93 m | **+37 %** | IMU hurts (mechanism not isolated — §8) |
 | 4Seasons snow | 44.96 m | 33.24 m | **−26 %** | IMU helps |
 | GO (full 285 s) | 11.66 m | 8.01 m | **−31 %** | IMU helps |
 | TD2 turnpike | 0.47 m | 0.63 m | **+34 %** | IMU hurts (assumed calib) |
@@ -78,9 +83,11 @@ also reach 5.01 m / 3.71 m with `loop_fusion` pose-graph closure (open-loop show
 calibration (4Seasons is a factory-calibrated VI rig; GO has clean `/tf_static` extrinsics and 200 Hz
 IMU) and hurts/diverges where the IMU parameters are *documented assumptions* (TD2 uses a Novatel SPAN
 with EuRoC-default noise densities because the dataset publishes none). The 4Seasons office case is
-different again: there the IMU is fine, but the 6.9 km open-loop route accumulates yaw drift that the
-inertial prior actually amplifies before any loop closure. **Takeaway: stereo-only is the safe default;
-IMU is an optimisation that must be earned with a good calibration.**
+different again: stereo+IMU's ATE is 37 % higher than stereo-only's, but **we could not conclusively
+isolate the mechanism** — our earlier "the inertial prior amplifies yaw drift" claim was not supported
+by the trajectory data (yaw drift is comparable between the two modes), so it has been softened; see the
+office investigation in limitations §8. **Takeaway: stereo-only is the safe default; IMU is an
+optimisation that must be earned with a good calibration.**
 
 ---
 
@@ -126,6 +133,58 @@ Only **TartanDrive 2.0** is license-clean for product-facing work. GO/4Seasons/K
    compares an 80 m off-road clip to a 6.9 km suburban loop. All cross-dataset claims here use drift%.
 7. **Pilots are short.** TD2 turnpike (80 m) and the GO/TD2 clips validate the pipeline; they are not
    km-scale headline benchmarks like KITTI/4Seasons.
+8. **4Seasons office — IMU regression investigated, mechanism not conclusively isolated.** Stereo+IMU's
+   ATE is 37 % higher than stereo-only's (119.93 vs 87.54 m) on this 6.9 km open-loop route. We tested
+   the earlier claim that the IMU "amplifies yaw drift" by aligning both estimates to GT (SE(3) Umeyama,
+   no scale) and plotting per-pose position error and yaw drift versus distance (figure below). What the
+   data actually shows:
+   - **It is progressive open-loop drift, not a constant offset.** Under early-window alignment both
+     modes grow from ~6 m to hundreds of metres (stereo → ~304 m, stereo+IMU → ~435 m by route end), so
+     the error is not a fixed bias present from the start.
+   - **Yaw drift is comparable between the two modes** (~12–15° total, ≈2°/km). The IMU actually
+     *reduces* yaw drift over the first half of the route and only exceeds stereo-only in the final
+     third (≈15° vs ≈12.6° at the end) — the same region where the position-error gap opens. Late-route
+     yaw drift therefore correlates with the gap but is far too small (an ~18 % yaw difference) to be the
+     sole cause of a 37 % ATE difference.
+   - **IMU bias / re-initialisation events could not be checked** — the prior stereo+IMU office run
+     retained only its trajectory CSV, not its VINS stdout log.
+
+   **Honest conclusion:** the +37 % regression is real, but the root cause is **not conclusively
+   isolated**. Candidate contributors include yaw drift, IMU extrinsic calibration, scale/translation
+   drift, and initialisation quality. The original "inertial prior amplifies yaw drift" wording asserted
+   a specific mechanism the evidence does not support, and has been softened throughout.
+
+   ![4Seasons office IMU investigation](figures/4seasons_office_imu_investigation.png)
+
+9. **GO full-285 s run-to-run stability — the single-run numbers are representative.** The headline GO
+   numbers came from one run each, so we repeated both modes with the identical config and command
+   (`go_rerun.sh`) and re-evaluated identically (`evo_ape --align --t_max_diff 0.05`):
+
+   | Mode | Run 1 ATE RMSE | Run 2 ATE RMSE | Variation |
+   |------|---------------:|---------------:|----------:|
+   | GO stereo | 11.6648 m | 11.6588 m | 0.05 % (0.006 m) |
+   | GO stereo+IMU | 8.0064 m | 8.0064 m | 0.00 % (bit-identical) |
+
+   Variation is negligible (< 0.1 %), as expected for single-threaded (`multiple_thread:0`) offline
+   replay, which should be deterministic. Stereo+IMU reproduced bit-for-bit; the stereo run differed by
+   one trajectory pose (8550 vs 8551, a frame-boundary timing artifact at bag start/end) for a 0.006 m
+   ATE change. **The original GO numbers are confirmed representative.**
+
+### TD2 gupta divergence — root cause summary
+
+In **stereo+IMU** mode VINS initialised successfully (online time-offset estimation, gyroscope bias
+calibrated to (−0.008, 0.010, −0.009), "Initialization finish!") and then **diverged to a multi-kilometre
+position estimate** — the final pose is (−5112, −6105, −2253) m on a route only 229 m long (ATE RMSE
+2338 m). The most likely cause is a **mismatched IMU noise model combined with solver starvation**: TD2
+publishes no IMU noise spec, so `acc_n`/`gyr_n`/`acc_w`/`gyr_w` are EuRoC-class defaults rather than
+values measured for TD2's actual Novatel SPAN unit, and the optimiser ran far over budget — **median
+3.2 s / mean 4.4 s per frame against the 0.5 s `max_solver_time` budget, with 99 % of frames (676/680)
+over budget and a 41.8 s peak** — so the sliding-window estimate could not keep up and degenerated.
+Fixing it would require measuring the real Novatel noise densities (or empirically tuning
+`acc_n`/`gyr_n`/`acc_w`/`gyr_w` against a few known-good short sequences) and verifying the cam–IMU
+extrinsics. **This is isolated to stereo+IMU mode — stereo-only on the same gupta bag was stable (ATE
+3.77 m, 1.65 % drift)** — so the failure is specifically in how the IMU factor interacts with this
+dataset's assumed calibration, not a general TD2 problem.
 
 ---
 
@@ -163,6 +222,8 @@ Only **TartanDrive 2.0** is license-clean for product-facing work. GO/4Seasons/K
 | **TD2 turnpike** (pilot) | `~/Dataset_VINS_Fusion_Comparison_Project/results/tartandrive2_vins_fusion/turnpike_warehouse/{stereo,stereo_imu}/` |
 | **GO / TD2 configs** | `~/Dataset_VINS_Fusion_Comparison_Project/configs/{go,tartandrive2}_vins_fusion/` |
 | **This report's chart** | `results/figures/drift_comparison.png` (`/tmp/drift_chart.py`) |
+| **Office IMU investigation** (§8) | `results/figures/4seasons_office_imu_investigation.png` (`/tmp/office_investigate.py`, `/tmp/office_growth.py`); inputs `~/datasets/4seasons/output_stereo_office/vio.csv` (stereo) and `~/datasets/4seasons/output/vio_4seasons_office.csv` (stereo+IMU) vs `gt_office.txt` |
+| **GO full-285 s run-to-run** (§9) | `…/go_vins_fusion/2025-01-24-13-07-50_newcal/{stereo_full_run2,stereo_imu_full_run2}/` (`go_rerun.sh`) |
 
 **Raw evo figures retained per run:**
 GO stereo_full ATE mean/median/max = 10.31 / 10.38 / 23.98 m (std 5.47); stereo_imu_full = 7.11 / 6.45 /

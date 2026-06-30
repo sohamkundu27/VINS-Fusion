@@ -21,8 +21,11 @@ Stereo-only (no IMU) VINS-Fusion on the undistorted/rectified pinhole images
 | office | 6878 m | 87.54 m | 119.93 m | IMU +37 % | 1.27 % | 1.74 % |
 | snow | 3608 m | 44.96 m | 33.24 m | IMU −26 % | 1.25 % | 0.92 % |
 
-IMU helps on neighbor/snow but **hurts on the 6.9 km office loop**, where open-loop yaw drift dominates
-and the inertial prior amplifies it before any loop closure.
+IMU helps on neighbor/snow but **hurts on the 6.9 km office loop** (+37 %). The mechanism is not
+conclusively isolated: a trajectory-level investigation (SE(3)-aligned APE and yaw drift vs distance)
+found the error is progressive open-loop drift with yaw drift *comparable* between the two modes — too
+small a yaw difference to fully explain the ATE gap. See
+[`../final_dataset_comparison.md`](../final_dataset_comparison.md) limitations §8.
 
 ## Caveats
 
