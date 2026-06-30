@@ -1,0 +1,70 @@
+%YAML:1.0
+
+# KITTI Raw 2011_10_03_drive_0027 (= Odometry seq 00) — VINS-Fusion STEREO + IMU (pure VIO).
+# Built for this cross-dataset study: rectified stereo (image_00/image_01) + OXTS inertial.
+# IMU stream is the 100 Hz OXTS (af,al,au / wf,wl,wu) from the *extract* (unsynced) data;
+# images are the 10 Hz synced+rectified frames. body frame = OXTS/IMU (x-fwd, y-left, z-up).
+# Extrinsics chain: body_T_cam = inv( R_rect_00 * R_velo_to_cam * R_imu_to_velo ).
+imu: 1
+num_of_cam: 2
+
+imu_topic: "/imu0"
+image0_topic: "/cam0/image_raw"
+image1_topic: "/cam1/image_raw"
+output_path: "/output/"
+
+cam0_calib: "cam_10_03.yaml"
+cam1_calib: "cam_10_03.yaml"
+image_width: 1241
+image_height: 376
+
+estimate_extrinsic: 0
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.001196690, -0.009241243,  0.999956493,  1.102242927,
+          -0.999976578, -0.006748808,  0.001134343, -0.319071945,
+           0.006738037, -0.999934531, -0.009249103,  0.746065891,
+           0.0,          0.0,          0.0,          1.0]
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.001196690, -0.009241243,  0.999956493,  1.102885748,
+          -0.999976578, -0.006748808,  0.001134343, -0.856225082,
+           0.006738037, -0.999934531, -0.009249103,  0.749685334,
+           0.0,          0.0,          0.0,          1.0]
+
+#Multiple thread support
+multiple_thread: 0
+
+#feature tracker parameters (matched to our validated KITTI odom tuning)
+max_cnt: 400
+min_dist: 25
+freq: 10
+F_threshold: 1.0
+show_track: 0
+flow_back: 1
+
+#optimization parameters (offline tuning lessons from this project)
+max_solver_time: 0.5
+max_num_iterations: 20
+keyframe_parallax: 15
+
+#imu parameters (KITTI OXTS RT3003 — shipped VINS KITTI-raw defaults)
+acc_n: 0.1
+gyr_n: 0.01
+acc_w: 0.001
+gyr_w: 1.0e-4
+g_norm: 9.81007
+
+#unsynchronization parameters — images (synced) and IMU (extract) are separate streams,
+# so let VINS estimate the small camera-IMU time offset.
+estimate_td: 1
+td: 0.0
+
+#loop closure
+load_previous_pose_graph: 0
+pose_graph_save_path: "/output/pose_graph/"
+save_image: 0

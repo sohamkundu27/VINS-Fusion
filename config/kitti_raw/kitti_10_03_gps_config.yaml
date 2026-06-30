@@ -1,0 +1,64 @@
+%YAML:1.0
+
+# KITTI Raw 2011_10_03_drive_0027 — config for kitti_gps_test (stereo VIO + GPS global fusion).
+# NOTE: kitti_gps_test reads stereo images + OXTS GPS only; it does NOT feed the OXTS IMU to the
+# estimator (imu:0). The local trajectory it writes (vio.txt) is therefore pure stereo VIO; the
+# GPS-fused trajectory comes from the separate global_fusion_node (vio_global.csv). This is a
+# different methodology from our pure stereo+IMU runs and is flagged as such in the report.
+imu: 0
+num_of_cam: 2
+
+imu_topic: ""
+image0_topic: ""
+image1_topic: ""
+output_path: "/output/"
+
+cam0_calib: "cam_10_03.yaml"
+cam1_calib: "cam_10_03.yaml"
+image_width: 1241
+image_height: 376
+
+estimate_extrinsic: 0
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1]
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [1, 0, 0, 0.537165718864418,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1]
+
+#Multiple thread support
+multiple_thread: 0
+
+#feature tracker parameters (matched to our validated KITTI odom tuning)
+max_cnt: 400
+min_dist: 25
+freq: 10
+F_threshold: 1.0
+show_track: 0
+flow_back: 1
+
+#optimization parameters (offline tuning lessons from this project)
+max_solver_time: 0.5
+max_num_iterations: 20
+keyframe_parallax: 15
+
+#imu parameters (unused here, imu:0 — kept for parser completeness)
+acc_n: 0.1
+gyr_n: 0.01
+acc_w: 0.001
+gyr_w: 1.0e-4
+g_norm: 9.81007
+
+#unsynchronization parameters
+estimate_td: 0
+td: 0.0
