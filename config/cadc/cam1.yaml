@@ -1,0 +1,17 @@
+%YAML:1.0
+---
+model_type: PINHOLE
+camera_name: cam1
+image_width: 1280
+image_height: 1024
+# CADC cam01 (camera_FR). plumb_bob k3=-0.0259 dropped.
+distortion_parameters:
+   k1: -0.213879066007817
+   k2: 0.106398237584110
+   p1: -0.000917852806182883
+   p2: 0.000758365562181359
+projection_parameters:
+   fx: 659.538950747990
+   fy: 660.928189799613
+   cx: 640.585315682482
+   cy: 490.646003044410

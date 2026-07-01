@@ -1,10 +1,10 @@
 # VINS-Fusion Cross-Dataset Comparison — Stereo vs Stereo+IMU
 
-**Author:** Soham Kundu · **Date:** 2026-06-30 · **Status:** complete (all runs local, real evo output;
-KITTI Raw stereo+IMU added)
+**Author:** Soham Kundu · **Date:** 2026-07-01 · **Status:** complete (all runs local, real evo output;
+KITTI Raw stereo+IMU and CADC stereo added)
 
-VINS-Fusion accuracy across **KITTI**, **4Seasons**, **GO (The Great Outdoors)**, and
-**TartanDrive 2.0**, in **stereo** and **stereo-inertial** modes. Every number below traces to an
+VINS-Fusion accuracy across **KITTI**, **4Seasons**, **GO (The Great Outdoors)**, **TartanDrive 2.0**,
+and **CADC (Canadian Adverse Driving Conditions)**, in **stereo** and **stereo-inertial** modes. Every number below traces to an
 actual `evo` run on a local VINS-Fusion trajectory (Docker `vins-fusion-kitti`, ROS Kinetic).
 **Nothing is estimated, interpolated, or invented.** Where a cell cannot be filled it is marked
 `N/A` with the reason.
@@ -34,6 +34,11 @@ actual `evo` run on a local VINS-Fusion trajectory (Docker `vins-fusion-kitti`, 
   low-excitation — IMU scale/gravity/bias are weakly observable). GPS-*aided* fusion works (0.94 m) but
   is **circular** — it is scored against the same GPS it fuses. This is itself a finding: it is *why*
   the VINS-Fusion authors ship the KITTI-raw config with `imu:0`. See limitations §10.
+- **CADC (adverse-weather, likely the first VINS-Fusion result on it) exposes a third calibration
+  failure mode: metric scale.** CADC has no purpose-built stereo pair (we picked 2 of its 8 ring
+  cameras) and its stereo extrinsic is internally inconsistent (three disagreeing baselines). VINS
+  tracks the *shape* well (scale-corrected 2.4 %) but the *metric* scale is 1.76× off under our no-scale
+  standard (24 %). It also ships no raw IMU (pose-only), so stereo+IMU is N/A. Reference-only (§11).
 - **For an official/commercial continuation, TartanDrive 2.0 (MIT) stereo-only is the recommendation.**
   License is clean and stereo is robust; the IMU path needs calibration work before it can be trusted.
 
@@ -58,6 +63,7 @@ Drift% = ATE RMSE ÷ ground-truth path length.
 | **GO** ⚠NC | 2025-01-24…newcal (285 s) | 865 m | 11.66 m | 8.01 m | 1.35 % | 0.93 % | ✅ |
 | **TartanDrive 2.0** ✅MIT | turnpike (pilot, 39 s) | 80 m | 0.47 m | 0.63 m | 0.59 % | 0.78 % | ✅ |
 | **TartanDrive 2.0** ✅MIT | gupta (70 s) | 229 m | 3.77 m | **DIVERGED** ² | 1.65 % | N/A ² | ✅ |
+| **CADC** ⚠NC | 2018_03_06_0001 (54 s) | 592 m | 142.0 m ⁵ | **N/A** ⁶ | 24.0 % ⁵ | N/A ⁶ | ⚠ pose-only |
 
 ¹ **KITTI *Odometry* has no IMU** — that benchmark publishes stereo + LiDAR only, so its stereo+IMU
   cells stay `N/A`. This is *not* a fundamental KITTI limitation, though: the **KITTI Raw** row below
@@ -72,6 +78,17 @@ Drift% = ATE RMSE ÷ ground-truth path length.
   trimmed; `estimate_td:0` retried). Root cause is low IMU excitation — see limitations §10. A separate
   **GPS-aided** run (`kitti_gps_test` + `global_fusion`) gives 0.94 m ATE, but that is **circular**
   (scored against the same OXTS GPS it fuses) and is a different methodology, not pure VIO.
+⁵ **CADC stereo tracks well but has a metric-scale error from calibration.** The trajectory *shape* is
+  good — **scale-corrected (Sim(3)) ATE is 14.5 m (2.4 %)**, RPE 2.67 m, and the estimate overlays GT
+  tightly (figure in §11). But under our standard **no-scale** metric (stereo assumed metric), the
+  estimate is **1.76× too large**, giving ATE 142.0 m (24 %). Cause: CADC's front-camera stereo
+  extrinsic is **inconsistent** — baseline is 0.512 m by the direct `T_00CAMERA_01CAMERA`, 0.399 m via
+  the lidar chain, and ~0.291 m to be scale-consistent with GT; no provided value yields correct metric
+  scale (re-running with the 0.399 m baseline was *worse*: 190 m, 2.05×). So the 24 % is a
+  **calibration-scale artifact, not a tracking failure.** Likely the first published VINS result on CADC.
+⁶ **CADC stereo+IMU is N/A — no raw IMU in the release.** CADC ships only the ~10–20 Hz Novatel INSPVAX
+  fused pose (used here as GT; no accelerometer/gyroscope). Building an IMU from it would be fabrication,
+  and 10–20 Hz is too slow for VINS regardless. Parallel to KITTI Odometry (missing sensor, not a run).
 ² **TD2 gupta stereo+IMU diverged** — the estimate ran to (−5112, −6105, −2253) m on a 229 m path
   (ATE RMSE 2338 m, ~1022 % "drift"). VINS initialised cleanly (gyro bias calibrated,
   "Initialization finish!") then the optimiser diverged, with solver time blowing past budget
@@ -97,6 +114,7 @@ also reach 5.01 m / 3.71 m with `loop_fusion` pose-graph closure (open-loop show
 | TD2 gupta | 3.77 m | diverged | **catastrophic** | IMU diverges (assumed calib) |
 | KITTI Raw 0027 | 14.12 m | diverged | **catastrophic** | IMU diverges (low excitation) |
 | KITTI Odom 00/01/05 | 14.71/7.34/5.97 m | — | — | N/A — Odometry ships no IMU |
+| CADC 2018_03_06_0001 | 142.0 m (14.5 scale-corr) | — | — | N/A — release has no raw IMU (pose only) |
 
 **Why the inconsistency is real, not noise.** The IMU helps on datasets/segments with trustworthy
 calibration (4Seasons is a factory-calibrated VI rig; GO has clean `/tf_static` extrinsics and 200 Hz
@@ -136,6 +154,8 @@ that run, with the reason noted — never estimated.
 | **GO** stereo / stereo+IMU | 10.38 / 6.45 | 11.66 / 8.01 | N/A ᵈ | 14.03 / 14.06 | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ |
 | **TD2 gupta** stereo | 2.10 | 3.77 | N/A ᵈ | 0.67 | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ |
 | **TD2 turnpike** stereo / stereo+IMU | N/A ᵈ | 0.47 / 0.63 | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ | N/A ᵈ |
+| **CADC** stereo (no-scale) ⁵ | 127.09 | 141.9985 | 290.96 | 313.26 | 101.24 ᵃ | 111.08 ᵃ | 9.93 ᵉ | 21.62 ᵉ | 23.23 ᵉ |
+| **CADC** stereo (scale-corrected) ⁵ | N/A | 14.49 | N/A | 2.67 | N/A | N/A | N/A | N/A | N/A |
 
 ᵃ **Attitude ~120° / ~177° is a frame-convention artifact, not error.** These stereo runs report pose
   in the camera-optical frame while the GT orientation is in the body/IMU frame (KITTI Raw OXTS, 4Seasons
@@ -148,6 +168,8 @@ that run, with the reason noted — never estimated.
 ᵈ GO and TD2 were scored with **evo APE/RPE only** (ATE + RPE-RMSE); attitude and velocity-error were not
   computed. GO's GPS-ENU reference additionally carries **no orientation** (NavSatFix), so attitude is
   unavailable in principle there.
+ᵉ CADC no-scale RPE and velocity-error are inflated by the 1.76× metric-scale error (footnote ⁵), not by
+  tracking noise — the scale-corrected RPE is 2.67 m. Reported for completeness under the standard metric.
 
 ## License / usability
 
@@ -157,6 +179,7 @@ that run, with the reason noted — never estimated.
 | GO | CC BY-NC-SA 3.0 | ❌ NonCommercial | high — compressed images, non-rectified stereo calib, NavSatFix→ENU | ⚠ reference-only (clear w/ PM/legal) |
 | 4Seasons | CC BY-NC-SA (typ.) | ❌ NonCommercial | medium — fisheye + undistorted pinhole variants | reference-only, low novelty |
 | KITTI | CC BY-NC-SA 3.0 | ❌ NonCommercial | low (Odometry) / high (Raw VIO) | reference-only; Odometry no IMU, Raw stereo+IMU diverges |
+| CADC | CC BY-NC 4.0 | ❌ NonCommercial | medium-high — no standard stereo pair (picked 2 of 8 ring cams), inconsistent stereo calib, no raw IMU | reference-only; stereo shape good but metric scale off |
 
 Only **TartanDrive 2.0** is license-clean for product-facing work. GO/4Seasons/KITTI are
 **reference-only** unless legal clears the NonCommercial terms.
@@ -268,6 +291,30 @@ dataset's assumed calibration, not a general TD2 problem.
     it fuses) — reported for completeness, not as independent VIO accuracy. Honest verdict: pure
     stereo+IMU is **not usable** on this KITTI sequence; we report it as a divergence, not a number.
 
+### CADC — stereo works in shape but not in metric scale; no raw IMU (likely first VINS result on CADC)
+
+11. **CADC (Canadian Adverse Driving Conditions, CC BY-NC 4.0 — reference-only).** We ran drive
+    `2018_03_06/0001` (543 stereo frames @ 10 Hz, 54 s, 592 m). We believe this is the **first published
+    VINS-Fusion result on CADC**. Three things had to be worked out honestly:
+    - **No purpose-built stereo pair.** CADC has 8 Ximea cameras in a surround ring. We selected the two
+      forward cameras **cam00 (F) + cam01 (FR)**, which the calibration shows are near-parallel (relative
+      rotation 1.59°) with a 0.512 m baseline; the other adjacent pairs rotate 43–74° (true ring cams).
+      Visually confirmed both look forward with large overlap.
+    - **Inconsistent stereo calibration → metric-scale error.** The trajectory *shape* is good — the
+      scale-corrected (Sim(3)) ATE is **14.5 m (2.4 %)** with RPE 2.67 m, and the estimate overlays GT
+      tightly (below). But under the standard **no-scale** metric the estimate is **1.76× too large**
+      (ATE 142 m, 24 %). CADC's stereo extrinsic is internally inconsistent: baseline **0.512 m** (direct
+      `T_00CAMERA_01CAMERA`), **0.399 m** (lidar-chain), and **~0.291 m** (scale-consistent with GT) all
+      disagree, and **no provided value gives correct metric scale** (the 0.399 m run was worse: 190 m,
+      2.05×). So the 24 % is a **calibration artifact, not a VINS failure** — CADC's front cameras are
+      not a cleanly-calibrated metric stereo rig. This is a stronger version of the GO calibration caveat.
+    - **No raw IMU → stereo+IMU N/A.** The public CADC release exposes only the ~10–20 Hz Novatel INSPVAX
+      *fused pose* (which we use as GT); there is no accelerometer/gyroscope stream. Deriving IMU from
+      poses would be fabrication and 10–20 Hz is too slow anyway, so pure stereo+IMU cannot be run
+      (parallel to KITTI Odometry). Adverse-weather note: images are overcast/wet winter scenes.
+
+    ![CADC stereo trajectory (scale-corrected) vs GT](figures/cadc_stereo_traj_trajectories.png)
+
 ---
 
 ## Recommendation
@@ -278,8 +325,9 @@ dataset's assumed calibration, not a general TD2 problem.
 - **Do not ship the TD2 stereo+IMU path yet.** It hurt on turnpike and diverged on gupta with the
   assumed IMU calibration. Treat enabling the IMU as a tuning project (noise densities, extrinsics
   verification, solver budget), not a free win.
-- **Keep GO and 4Seasons as reference-only** (NonCommercial). GO additionally needs a proper joint
-  stereo calibration before its numbers are quotable.
+- **Keep GO, 4Seasons and CADC as reference-only** (NonCommercial). GO and **CADC** additionally need a
+  proper joint stereo calibration before their metric numbers are quotable — CADC's stereo shape is good
+  but its metric scale is off by 1.76× (inconsistent extrinsics), and it has no raw IMU (§11).
 - **Use KITTI stereo-only.** Odometry ships no IMU; KITTI Raw has OXTS but pure stereo+IMU **diverges**
   on it (low excitation, §10). KITTI remains the cleanest long-range *stereo* reference (0.27 %–0.39 %
   drift) — do not pursue KITTI VIO without addressing the excitation problem (e.g. sequences with more
@@ -306,6 +354,7 @@ dataset's assumed calibration, not a general TD2 problem.
 | **TD2 gupta** | `~/Dataset_VINS_Fusion_Comparison_Project/results/tartandrive2_vins_fusion/2023-11-14-14-24-21_gupta/{stereo,stereo_imu}/` — `vio.csv`, `vins_est_tum.txt`, `reference_odom_tum.txt`, `gupta_eval_summary.txt`; plots `results/comparison/figures/gupta_*_traj_trajectories.png` |
 | **TD2 turnpike** (pilot) | `~/Dataset_VINS_Fusion_Comparison_Project/results/tartandrive2_vins_fusion/turnpike_warehouse/{stereo,stereo_imu}/` |
 | **GO / TD2 configs** | `~/Dataset_VINS_Fusion_Comparison_Project/configs/{go,tartandrive2}_vins_fusion/` |
+| **CADC** (`2018_03_06/0001`) ⚠NC | data `~/datasets/cadc/{raw,processed_raw}/` (cam00/01 @10Hz + novatel); calib `~/datasets/cadc/calib_probe/calib/`; GT `~/datasets/cadc/ground_truth/gt_tum.txt` (592 m); configs `config/cadc/{cam0,cam1,cadc_stereo,cadc_stereo_imu}.yaml`; run `~/datasets/cadc/output/stereo/` (`vio.csv`, `vins_est_tum.txt`, `cadc_eval_summary.txt`); bag builder `~/datasets/cadc/build_cadc_bag.py`; devkit `~/datasets/cadc/cadc_devkit/`; notes `cadc_structure_notes.txt`; plot `results/figures/cadc_stereo_traj_trajectories.png` |
 | **This report's chart** | `results/figures/drift_comparison.png` (`/tmp/drift_chart.py`) |
 | **Office IMU investigation** (§8) | `results/figures/4seasons_office_imu_investigation.png` (`/tmp/office_investigate.py`, `/tmp/office_growth.py`); inputs `~/datasets/4seasons/output_stereo_office/vio.csv` (stereo) and `~/datasets/4seasons/output/vio_4seasons_office.csv` (stereo+IMU) vs `gt_office.txt` |
 | **GO full-285 s run-to-run** (§9) | `…/go_vins_fusion/2025-01-24-13-07-50_newcal/{stereo_full_run2,stereo_imu_full_run2}/` (`go_rerun.sh`) |

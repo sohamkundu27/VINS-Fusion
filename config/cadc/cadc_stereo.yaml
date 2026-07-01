@@ -1,0 +1,72 @@
+%YAML:1.0
+
+# CADC (Canadian Adverse Driving Conditions) — VINS-Fusion STEREO-only config.
+# Forward stereo pair from the 8-camera ring: cam00 (camera_F, front) + cam01 (camera_FR).
+# Chosen because their relative rotation is only 1.59 deg (near-parallel) with a 0.512 m baseline
+# (direct calib T_00CAMERA_01CAMERA). The other adjacent ring cameras rotate 43-74 deg (surround).
+# NOTE: baseline from the direct cam-cam calib is 0.512 m; chaining the lidar->cam transforms instead
+# gives 0.399 m — a documented CADC calibration inconsistency. We use the direct stereo calib.
+# License: CC BY-NC 4.0 (NonCommercial) -> reference-only.
+imu: 0
+num_of_cam: 2
+
+imu_topic: ""
+image0_topic: "/cam0/image_raw"
+image1_topic: "/cam1/image_raw"
+output_path: "/output/"
+
+cam0_calib: "cam0.yaml"
+cam1_calib: "cam1.yaml"
+image_width: 1280
+image_height: 1024
+
+# body frame = cam0. body_T_cam1 = T_00CAMERA_01CAMERA (cam1 pose in cam0 frame), direct stereo calib.
+estimate_extrinsic: 0
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1]
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.999873366481986,  0.00785511119363599, 0.0138400949460303,  0.511992829267713,
+          -0.00753704132322137, 0.999709670964055,  -0.0228859517834139, -0.00698998019458556,
+          -0.0140158484606381,  0.0227787402873009,  0.999642278509094,  -0.0269035653770057,
+           0, 0, 0, 1]
+
+#Multiple thread support
+multiple_thread: 0
+
+#feature tracker parameters
+max_cnt: 200
+min_dist: 25
+freq: 10
+F_threshold: 1.0
+show_track: 0
+flow_back: 1
+
+#optimization parameters
+max_solver_time: 0.5
+max_num_iterations: 20
+keyframe_parallax: 10.0
+
+#imu parameters (unused; imu:0)
+acc_n: 0.1
+gyr_n: 0.01
+acc_w: 0.001
+gyr_w: 0.0001
+g_norm: 9.81007
+
+#unsynchronization parameters
+estimate_td: 0
+td: 0.0
+
+#loop closure
+load_previous_pose_graph: 0
+pose_graph_save_path: "/output/pose_graph/"
+save_image: 0

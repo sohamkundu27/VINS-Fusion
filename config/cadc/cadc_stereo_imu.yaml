@@ -1,0 +1,68 @@
+%YAML:1.0
+
+# CADC — VINS-Fusion STEREO+IMU config.  *** REFERENCE ONLY — NOT RUNNABLE ***
+# The public CADC release exposes NO raw high-rate IMU stream. The only inertial/pose data is the
+# ~10 Hz Novatel INSPVAX solution in novatel/data/*.txt, which is a FUSED GNSS/INS POSE (used here as
+# ground truth), containing lat/lon/alt + roll/pitch/azimuth + stddevs — no accelerometer or gyroscope.
+# (dataformat.txt: "Converted from Inertial Explorer output to match novatel INSPVAX message".)
+# Building an IMU stream from these poses would be fabrication, and 10 Hz is far too slow for VINS-IMU
+# preintegration anyway. So pure stereo+IMU cannot be run on CADC without unreleased raw IMU data.
+# This file is kept only to document the intended extrinsics/noise had raw IMU been available.
+#
+# body frame = Novatel GPS/IMU. body_T_camX = inv(T_LIDAR_GPSIMU) * T_LIDAR_CAM0X (calibration chain).
+# IMU noise: no published Novatel OEM638-paired-IMU noise density found -> EuRoC-class DEFAULTS
+# (DOCUMENTED ASSUMPTION, same caveat as TartanDrive 2.0). Would need the true IMU spec to trust.
+imu: 1
+num_of_cam: 2
+
+imu_topic: "/imu0"
+image0_topic: "/cam0/image_raw"
+image1_topic: "/cam1/image_raw"
+output_path: "/output/"
+
+cam0_calib: "cam0.yaml"
+cam1_calib: "cam1.yaml"
+image_width: 1280
+image_height: 1024
+
+estimate_extrinsic: 0
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.99981459, -0.01862257,  0.00060133,  0.14525627,
+          -0.00032755,  0.01406317,  0.99988823,  1.77008177,
+          -0.01861685, -0.99971551,  0.01406632,  0.67344205,
+           0, 0, 0, 1]
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.99981545, -0.01114839,  0.01487130,  0.46422333,
+          -0.01443807,  0.03696645,  0.99919937,  1.53075475,
+          -0.01167720, -0.99924178,  0.03681097,  0.67049328,
+           0, 0, 0, 1]
+
+multiple_thread: 0
+max_cnt: 200
+min_dist: 25
+freq: 10
+F_threshold: 1.0
+show_track: 0
+flow_back: 1
+max_solver_time: 0.5
+max_num_iterations: 20
+keyframe_parallax: 10.0
+
+# EuRoC-default IMU noise (DOCUMENTED ASSUMPTION — no CADC IMU spec, and no raw IMU data to run this).
+acc_n: 0.1
+gyr_n: 0.01
+acc_w: 0.001
+gyr_w: 0.0001
+g_norm: 9.81007
+
+estimate_td: 1
+td: 0.0
+load_previous_pose_graph: 0
+pose_graph_save_path: "/output/pose_graph/"
+save_image: 0
