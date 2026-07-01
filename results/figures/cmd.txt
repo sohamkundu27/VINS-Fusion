@@ -49,13 +49,3 @@ ls -lh /datasets/tartandrive2/raw/2023-11-14-14-24-21_gupta.bag
 ls -lh /datasets/tartandrive2/slim/2023-11-14-14-24-21_gupta_vins_slim.bag
 du -sh /datasets/tartandrive2
 '
-
-
-
-
-
-This slide compares the clean KITTI benchmark to TartanDrive 2.0, which is more off-road and less structured. I’m using drift percent instead of just ATE meters because the sequence lengths are different, so drift percent is the fairer cross-dataset comparison.
-
-For TartanDrive, I tested two stereo-only sequences. Turnpike was the shorter pilot sequence, about 80 meters, and VINS-Fusion got 0.59 percent drift. Gupta was longer and harder, about 229 meters, and drift increased to 1.65 percent.
-
-The key takeaway is that KITTI is still cleaner and easier, but stereo-only VINS-Fusion stayed stable when moving to off-road data. So TartanDrive 2.0 looks like the best next benchmark, while IMU tuning can be treated as a separate follow-up.
