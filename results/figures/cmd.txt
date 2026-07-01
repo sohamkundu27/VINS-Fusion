@@ -1,24 +1,51 @@
-mkdir -p ~/datasets/tartandrive2/raw ~/datasets/tartandrive2/slim
-cd ~/datasets/tartandrive2/raw
+cd ~/ground-stereo-odometry/VINS-Fusion
 
+make build
+
+mkdir -p ~/datasets/tartandrive2/raw ~/datasets/tartandrive2/slim
+
+docker run --rm -it \
+  -v "$HOME/datasets:/datasets" \
+  ros:vins-fusion \
+  bash -lc '
+set -e
+
+echo "Installing curl if needed..."
+apt-get update
+apt-get install -y curl ca-certificates
+
+mkdir -p /datasets/tartandrive2/raw /datasets/tartandrive2/slim
+cd /datasets/tartandrive2/raw
+
+echo "Testing TartanDrive 2.0 bucket..."
 curl --http1.1 -L \
 "https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/AUTH_ac8533a83cff4d48bc8c608ad222d330/tartandrive2/?format=json&prefix=bags/2023-11-14-14-24-21_gupta/" \
 | head
 
+echo "Downloading gupta bag..."
 curl --http1.1 -L -C - \
 -o "2023-11-14-14-24-21_gupta.bag" \
 "https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/AUTH_ac8533a83cff4d48bc8c608ad222d330/tartandrive2/bags/2023-11-14-14-24-21_gupta/2023-11-14-14-24-21_gupta.bag"
 
-rosbag info "2023-11-14-14-24-21_gupta.bag" | grep -E "image|imu|odom|camera"
+echo "Raw bag downloaded:"
+ls -lh "2023-11-14-14-24-21_gupta.bag"
 
-rosbag filter "2023-11-14-14-24-21_gupta.bag" "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag" \
-"topic in [
-'/multisense/left/image_rect',
-'/multisense/right/image_rect',
-'/multisense/imu/imu_data',
-'/odometry/filtered_odom'
+echo "Bag topics:"
+rosbag info "2023-11-14-14-24-21_gupta.bag" | grep -E "image|imu|odom|camera|multisense" || true
+
+echo "Filtering to VINS-relevant topics..."
+rosbag filter "2023-11-14-14-24-21_gupta.bag" "/datasets/tartandrive2/slim/2023-11-14-14-24-21_gupta_vins_slim.bag" "topic in [
+    '\''/multisense/left/image_rect'\'',
+    '\''/multisense/right/image_rect'\'',
+    '\''/multisense/imu/imu_data'\'',
+    '\''/odometry/filtered_odom'\''
 ]"
 
-rosbag info "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag"
-ls -lh "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag"
-du -sh ~/datasets/tartandrive2
+echo "Slim bag info:"
+rosbag info "/datasets/tartandrive2/slim/2023-11-14-14-24-21_gupta_vins_slim.bag"
+
+echo "Final sizes:"
+ls -lh /datasets/tartandrive2/raw/2023-11-14-14-24-21_gupta.bag
+ls -lh /datasets/tartandrive2/slim/2023-11-14-14-24-21_gupta_vins_slim.bag
+du -sh /datasets/tartandrive2
+'
