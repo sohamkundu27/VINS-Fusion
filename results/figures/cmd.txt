@@ -1,0 +1,24 @@
+mkdir -p ~/datasets/tartandrive2/raw ~/datasets/tartandrive2/slim
+cd ~/datasets/tartandrive2/raw
+
+curl --http1.1 -L \
+"https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/AUTH_ac8533a83cff4d48bc8c608ad222d330/tartandrive2/?format=json&prefix=bags/2023-11-14-14-24-21_gupta/" \
+| head
+
+curl --http1.1 -L -C - \
+-o "2023-11-14-14-24-21_gupta.bag" \
+"https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/AUTH_ac8533a83cff4d48bc8c608ad222d330/tartandrive2/bags/2023-11-14-14-24-21_gupta/2023-11-14-14-24-21_gupta.bag"
+
+rosbag info "2023-11-14-14-24-21_gupta.bag" | grep -E "image|imu|odom|camera"
+
+rosbag filter "2023-11-14-14-24-21_gupta.bag" "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag" \
+"topic in [
+'/multisense/left/image_rect',
+'/multisense/right/image_rect',
+'/multisense/imu/imu_data',
+'/odometry/filtered_odom'
+]"
+
+rosbag info "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag"
+ls -lh "../slim/2023-11-14-14-24-21_gupta_vins_slim.bag"
+du -sh ~/datasets/tartandrive2

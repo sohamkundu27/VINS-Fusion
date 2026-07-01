@@ -1,0 +1,1 @@
+KITTI remains the clean long-range stereo benchmark with 0.27–0.39% drift. TartanDrive 2.0 is harder off-road data but stereo-only VINS-Fusion remains stable, with 0.59% drift on turnpike and 1.65% drift on gupta.
